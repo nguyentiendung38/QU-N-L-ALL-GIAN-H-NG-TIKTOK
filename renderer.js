@@ -464,8 +464,8 @@ function updateStatsAndBatchBar(filtered) {
   openSelectedBtn.disabled = selectedIds.size === 0;
 
   const closeAllBtn = $('closeAllBtn');
-  closeAllBtn.textContent = `⏹ Đóng tất cả (${runningIds.size})`;
-  closeAllBtn.disabled = runningIds.size === 0;
+  closeAllBtn.textContent = `⏹ Đóng tất cả (${runningInRole})`;
+  closeAllBtn.disabled = runningInRole === 0;
 
   const selectAllChk = $('selectAllChk');
   if (filtered.length === 0) {
@@ -831,13 +831,23 @@ $('openSelectedBtn').onclick = async () => {
 };
 
 $('closeAllBtn').onclick = async () => {
-  if (!runningIds.size) return;
-  if (!confirm(`Đóng tất cả ${runningIds.size} cửa sổ Chrome đang mở?`)) return;
-  const r = await window.api.closeAllShops();
-  if (r && r.ok) {
-    runningIds.clear();
+  const roleRunning = getVisibleShopsForRole().filter((s) => runningIds.has(s.id));
+  if (!roleRunning.length) return;
+  if (!confirm(`Đóng tất cả ${roleRunning.length} cửa sổ Chrome đang mở của tài khoản này?`)) return;
+  if (isMemberMode()) {
+    for (const s of roleRunning) {
+      await window.api.closeShop(s.id);
+      runningIds.delete(s.id);
+    }
     render();
-    toast(`Đã đóng toàn bộ ${r.closedCount || ''} cửa sổ Chrome!`);
+    toast(`Đã đóng ${roleRunning.length} cửa sổ Chrome của bạn!`);
+  } else {
+    const r = await window.api.closeAllShops();
+    if (r && r.ok) {
+      runningIds.clear();
+      render();
+      toast(`Đã đóng toàn bộ ${r.closedCount || roleRunning.length} cửa sổ Chrome!`);
+    }
   }
 };
 
