@@ -1,0 +1,88 @@
+name: Build MacBook & Windows App
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-mac:
+    name: Build cho MacBook (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS App (.dmg & .zip)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run build:mac
+
+      - name: Prepare MacBook package with Gatekeeper helper
+        run: |
+          mkdir -p pkg-mac release-mac
+          cp -R "dist/mac-universal/186 HOME - TikTok MultiShop.app" "pkg-mac/"
+          codesign --force --deep --sign - "pkg-mac/186 HOME - TikTok MultiShop.app" || true
+
+          cat << 'EOF' > "pkg-mac/Mo-App-Lan-Dau.command"
+          #!/bin/bash
+          DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+          APP="$DIR/186 HOME - TikTok MultiShop.app"
+          if [ ! -d "$APP" ] && [ -d "/Applications/186 HOME - TikTok MultiShop.app" ]; then
+            APP="/Applications/186 HOME - TikTok MultiShop.app"
+          fi
+          xattr -cr "$APP" 2>/dev/null
+          chmod +x "$APP/Contents/MacOS/"* 2>/dev/null
+          open "$APP"
+          EOF
+          chmod +x "pkg-mac/Mo-App-Lan-Dau.command"
+
+          ditto -c -k "pkg-mac" "release-mac/186-HOME-TikTok-MultiShop-MacBook.zip"
+          cp dist/*.dmg release-mac/ 2>/dev/null || true
+
+      - name: Upload File cho MacBook
+        uses: actions/upload-artifact@v4
+        with:
+          name: TikTok-MultiShop-MacBook
+          path: |
+            release-mac/*.zip
+            release-mac/*.dmg
+          if-no-files-found: error
+
+  build-win:
+    name: Build cho Windows (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows App (.exe)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run build
+
+      - name: Upload File cho Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: TikTok-MultiShop-Windows
+          path: dist/*.exe
+          if-no-files-found: error
