@@ -1,8 +1,8 @@
 {
-  "version": "2.1.7",
-  "buildNumber": 217,
+  "version": "2.1.8",
+  "buildNumber": 218,
   "updatedAt": "2026-10-13",
-  "notes": "Cap nhat link default Ads va cho phep dien link Ads trong phan quyen thanh vien",
+  "notes": "Bo nut mui ten, tich hop keo tha truc quan de doi thu tu gian hang",
   "files": [
     "index.html",
     "renderer.js",

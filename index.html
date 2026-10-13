@@ -185,9 +185,22 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: border-color .15s, box-shadow .15s;
+    transition: border-color .15s, box-shadow .15s, opacity .15s, transform .15s;
   }
   .card:hover { border-color: #38414e; }
+  .card.is-draggable .head { cursor: grab; }
+  .card.is-draggable .head:active { cursor: grabbing; }
+  .card.dragging {
+    opacity: 0.35;
+    transform: scale(0.97);
+    border: 2px dashed var(--teal);
+    box-shadow: none;
+  }
+  .card.drag-over {
+    border-color: var(--teal);
+    box-shadow: 0 0 0 2px var(--teal), 0 8px 24px rgba(15,157,148,.25);
+    transform: translateY(-2px);
+  }
   .card.is-running {
     border-color: rgba(46,160,67,.55);
     box-shadow: 0 0 0 1px rgba(46,160,67,.2), 0 6px 20px rgba(0,0,0,.3);

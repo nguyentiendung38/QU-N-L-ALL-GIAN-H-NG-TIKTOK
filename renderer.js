@@ -19,6 +19,7 @@ let currentDlgLinkMode = 'ads'; // 'ads' | 'cskh'
 let searchQuery = '';
 let activeGroup = '__ALL__';
 let activeMember = 'ALL';
+let draggedShopId = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -614,6 +615,58 @@ function render() {
     const card = document.createElement('div');
     card.className = 'card' + (isRunning ? ' is-running' : '');
 
+    if (!isMemberMode()) {
+      card.classList.add('is-draggable');
+      card.setAttribute('draggable', 'true');
+      card.title = '💡 Giữ chuột kéo thả để đổi thứ tự gian hàng';
+
+      card.addEventListener('dragstart', (e) => {
+        if (e.target.closest('button, input, select, .badge, .status-pill, .actions, .tools')) {
+          e.preventDefault();
+          return;
+        }
+        draggedShopId = s.id;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', s.id);
+        setTimeout(() => card.classList.add('dragging'), 0);
+      });
+
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        document.querySelectorAll('.card.drag-over').forEach((el) => el.classList.remove('drag-over'));
+        draggedShopId = null;
+      });
+
+      card.addEventListener('dragover', (e) => {
+        if (!draggedShopId || draggedShopId === s.id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        card.classList.add('drag-over');
+      });
+
+      card.addEventListener('dragleave', (e) => {
+        if (!card.contains(e.relatedTarget)) {
+          card.classList.remove('drag-over');
+        }
+      });
+
+      card.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        card.classList.remove('drag-over');
+        const sourceId = e.dataTransfer.getData('text/plain') || draggedShopId;
+        if (!sourceId || sourceId === s.id) return;
+        const fromIndex = shops.findIndex((x) => x.id === sourceId);
+        const toIndex = shops.findIndex((x) => x.id === s.id);
+        if (fromIndex !== -1 && toIndex !== -1) {
+          const [moved] = shops.splice(fromIndex, 1);
+          shops.splice(toIndex, 0, moved);
+          await persist();
+          render();
+          toast(`Đã đổi vị trí gian "${moved.name}"`);
+        }
+      });
+    }
+
     const bar = document.createElement('div');
     bar.className = 'bar';
     bar.style.background = s.color || '#0f9d94';
@@ -796,13 +849,7 @@ function render() {
     if (!isMemberMode()) {
       const tools = document.createElement('div');
       tools.className = 'tools';
-      const up = mkBtn('◀', 'small', () => moveShop(realIndex, -1), 'Dời lên trước');
-      const down = mkBtn('▶', 'small', () => moveShop(realIndex, 1), 'Dời ra sau');
-      up.disabled = realIndex === 0;
-      down.disabled = realIndex === shops.length - 1;
       tools.append(
-        up,
-        down,
         mkBtn('Sửa', 'small', () => openDialog(s, false)),
         mkBtn('Xóa đăng nhập', 'small danger', () => resetLogin(s), 'Xóa phiên đăng nhập đã lưu của gian này'),
         mkBtn('Xóa gian', 'small danger', () => deleteShop(s))
