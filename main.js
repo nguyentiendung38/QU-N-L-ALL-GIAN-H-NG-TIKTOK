@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
+const zlib = require('zlib');
 const net = require('net');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
@@ -24,6 +26,9 @@ const DEFAULT_CSKH_CHAT =
   'https://seller-vn.tiktok.com/chat/inbox/current?oec_seller_id=7494826072462165266&shop_region=VN&lang=en&from=seller_center_navigation_im';
 const DEFAULT_CSKH_ORDERS =
   'https://seller-vn.tiktok.com/order?order_status[]=1&selected_sort=11&tab=to_ship';
+
+// Ma dong bo Cloud chung mac dinh cho toan he thong 186 HOME (Admin & Nhan vien khac may tu dong dong bo)
+const DEFAULT_CLOUD_KEY = 'v6ippqsk';
 
 const shopsFile = () => path.join(app.getPath('userData'), 'shops.json');
 const membersFile = () => path.join(app.getPath('userData'), 'members.json');
@@ -63,6 +68,254 @@ function readMembers() {
   return Array.isArray(own) ? own : [];
 }
 
+function readAuthObj() {
+  const s = readJson(settingsFile(), {});
+  return {
+    adminUser: s.adminUser || 'admin',
+    adminPass: s.adminPass || '123456',
+    requireLogin: true,
+    cloudKey: s.cloudKey || DEFAULT_CLOUD_KEY,
+    lastCloudUpdatedAt: Number(s.lastCloudUpdatedAt) || 0
+  };
+}
+
+function httpsReq(url, method = 'GET', body = null, extraHeaders = {}) {
+  return new Promise((resolve) => {
+    try {
+      const u = new URL(url);
+      const r = https.request(
+        {
+          hostname: u.hostname,
+          path: u.pathname + u.search,
+          method,
+          timeout: 8000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0',
+            ...extraHeaders,
+            ...(body !== null ? { 'Content-Length': Buffer.byteLength(body) } : {})
+          }
+        },
+        (res) => {
+          let d = '';
+          res.on('data', (c) => (d += c));
+          res.on('end', () => resolve({ status: res.statusCode, body: d }));
+        }
+      );
+      r.on('error', (e) => resolve({ status: 0, error: e.message }));
+      r.on('timeout', () => {
+        try {
+          r.destroy();
+        } catch {}
+        resolve({ status: 0, error: 'TIMEOUT' });
+      });
+      if (body !== null) r.write(body);
+      r.end();
+    } catch (e) {
+      resolve({ status: 0, error: e.message });
+    }
+  });
+}
+
+let cloudPushTimer = null;
+async function pushToCloudNow() {
+  try {
+    const s = readJson(settingsFile(), {});
+    const cloudKey = (s.cloudKey || DEFAULT_CLOUD_KEY).trim();
+    const shops = readShops();
+    const members = readMembers();
+    const updatedAt = Date.now();
+
+    const payload = {
+      version: 2,
+      updatedAt,
+      adminUser: s.adminUser || 'admin',
+      adminPass: s.adminPass || '123456',
+      shops,
+      members
+    };
+
+    const jsonStr = JSON.stringify(payload);
+
+    // 1. Upload full JSON len bytebin (nhanh, khong gioi han dung luong)
+    let bbKey = 'NONE';
+    const bbRes = await httpsReq('https://bytebin.lucko.me/post', 'POST', jsonStr, {
+      'Content-Type': 'application/json'
+    });
+    if (bbRes.status === 201 && bbRes.body) {
+      try {
+        bbKey = JSON.parse(bbRes.body).key || 'NONE';
+      } catch {}
+    }
+
+    // 2. Dong thoi nen va luu cac chunk len keyvalue.immanuel.co (du phong kep 100%)
+    const compressed = zlib.deflateRawSync(Buffer.from(jsonStr, 'utf8')).toString('base64url');
+    const chunkSize = 180;
+    const chunks = [];
+    for (let i = 0; i < compressed.length; i += chunkSize) {
+      chunks.push(compressed.slice(i, i + chunkSize));
+    }
+
+    await Promise.all(
+      chunks.map((ch, idx) =>
+        httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/c_${idx}/${ch}`, 'POST', '')
+      )
+    );
+
+    const manifest = `${bbKey}_${chunks.length}_${updatedAt}`;
+    const mRes = await httpsReq(
+      `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/manifest/${manifest}`,
+      'POST',
+      ''
+    );
+
+    s.lastCloudUpdatedAt = updatedAt;
+    writeJson(settingsFile(), s);
+    return { ok: mRes.status === 200, updatedAt };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function scheduleCloudPush() {
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(() => {
+    pushToCloudNow();
+  }, 250);
+}
+
+async function pullFromCloud(force = false) {
+  try {
+    const s = readJson(settingsFile(), {});
+    const cloudKey = (s.cloudKey || DEFAULT_CLOUD_KEY).trim();
+    const localUpdatedAt = Number(s.lastCloudUpdatedAt) || 0;
+
+    const mRes = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${cloudKey}/manifest`, 'GET');
+    if (mRes.status !== 200 || !mRes.body) {
+      return {
+        ok: false,
+        error: 'CLOUD_UNREACHABLE',
+        shops: readShops(),
+        members: readMembers(),
+        authConfig: readAuthObj()
+      };
+    }
+
+    let manifestStr = '';
+    try {
+      manifestStr = JSON.parse(mRes.body) || '';
+    } catch {
+      manifestStr = String(mRes.body || '').replace(/^"|"$/g, '');
+    }
+
+    // Neu Cloud chua co du lieu nao ma may nay dang co san shop/member -> day len Cloud luon
+    if (!manifestStr || !manifestStr.includes('_')) {
+      const localShops = readShops();
+      const localMembers = readMembers();
+      if (localShops.length > 0 || localMembers.length > 0) {
+        await pushToCloudNow();
+      }
+      return {
+        ok: true,
+        updated: false,
+        shops: localShops,
+        members: localMembers,
+        authConfig: readAuthObj()
+      };
+    }
+
+    const parts = manifestStr.split('_');
+    const bbKey = parts[0];
+    const chunkCount = parseInt(parts[1], 10) || 0;
+    const remoteUpdatedAt = parseInt(parts[2], 10) || 0;
+
+    const localShopsNow = readShops();
+    if (!force && remoteUpdatedAt <= localUpdatedAt && localShopsNow.length > 0) {
+      return {
+        ok: true,
+        updated: false,
+        updatedAt: remoteUpdatedAt,
+        shops: localShopsNow,
+        members: readMembers(),
+        authConfig: readAuthObj()
+      };
+    }
+
+    let remoteData = null;
+
+    // Uu tien 1: Tai nhanh tu bytebin
+    if (bbKey && bbKey !== 'NONE') {
+      const bbRes = await httpsReq(`https://bytebin.lucko.me/${bbKey}`, 'GET');
+      if (bbRes.status === 200 && bbRes.body) {
+        try {
+          remoteData = JSON.parse(bbRes.body);
+        } catch {}
+      }
+    }
+
+    // Uu tien 2 (Du phong): Ghep cac chunk tu keyvalue.immanuel.co
+    if (!remoteData && chunkCount > 0) {
+      const chunkResponses = await Promise.all(
+        Array.from({ length: chunkCount }, (_, i) =>
+          httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${cloudKey}/c_${i}`, 'GET')
+        )
+      );
+      const joined = chunkResponses
+        .map((r) => {
+          try {
+            return JSON.parse(r.body) || '';
+          } catch {
+            return String(r.body || '').replace(/^"|"$/g, '');
+          }
+        })
+        .join('');
+      if (joined) {
+        const rawJson = zlib.inflateRawSync(Buffer.from(joined, 'base64url')).toString('utf8');
+        remoteData = JSON.parse(rawJson);
+      }
+    }
+
+    if (!remoteData || typeof remoteData !== 'object') {
+      return {
+        ok: false,
+        error: 'INVALID_CLOUD_DATA',
+        shops: localShopsNow,
+        members: readMembers(),
+        authConfig: readAuthObj()
+      };
+    }
+
+    if (Array.isArray(remoteData.shops)) {
+      writeJson(shopsFile(), remoteData.shops);
+    }
+    if (Array.isArray(remoteData.members)) {
+      writeJson(membersFile(), remoteData.members);
+    }
+
+    const updatedSettings = readJson(settingsFile(), {});
+    if (remoteData.adminUser) updatedSettings.adminUser = remoteData.adminUser;
+    if (remoteData.adminPass) updatedSettings.adminPass = remoteData.adminPass;
+    updatedSettings.lastCloudUpdatedAt = remoteUpdatedAt || Date.now();
+    writeJson(settingsFile(), updatedSettings);
+
+    return {
+      ok: true,
+      updated: true,
+      updatedAt: updatedSettings.lastCloudUpdatedAt,
+      shops: readShops(),
+      members: readMembers(),
+      authConfig: readAuthObj()
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e.message,
+      shops: readShops(),
+      members: readMembers(),
+      authConfig: readAuthObj()
+    };
+  }
+}
+
 // Tim Chrome (hoac Edge neu khong co Chrome). Co the chon tay trong phan cai dat.
 function findBrowser() {
   const s = readJson(settingsFile(), {});
@@ -97,34 +350,34 @@ const safeId = (id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_');
 ipcMain.handle('shops:get', () => readShops());
 ipcMain.handle('shops:save', (_e, shops) => {
   writeJson(shopsFile(), shops);
+  scheduleCloudPush();
   return true;
 });
 
 ipcMain.handle('members:get', () => readMembers());
 ipcMain.handle('members:save', (_e, members) => {
   writeJson(membersFile(), Array.isArray(members) ? members : []);
+  scheduleCloudPush();
   return true;
 });
 
-ipcMain.handle('auth:get', () => {
-  const s = readJson(settingsFile(), {});
-  return {
-    adminUser: s.adminUser || 'admin',
-    adminPass: s.adminPass || '123456',
-    requireLogin: Boolean(s.requireLogin)
-  };
-});
+ipcMain.handle('auth:get', () => readAuthObj());
 
 ipcMain.handle('auth:save', (_e, cfg) => {
   const s = readJson(settingsFile(), {});
   if (cfg && typeof cfg === 'object') {
     if (cfg.adminUser) s.adminUser = String(cfg.adminUser).trim();
     if (cfg.adminPass) s.adminPass = String(cfg.adminPass).trim();
+    if (cfg.cloudKey) s.cloudKey = String(cfg.cloudKey).trim();
     if (typeof cfg.requireLogin === 'boolean') s.requireLogin = cfg.requireLogin;
   }
   writeJson(settingsFile(), s);
+  scheduleCloudPush();
   return true;
 });
+
+ipcMain.handle('cloud:push', () => pushToCloudNow());
+ipcMain.handle('cloud:pull', (_e, force) => pullFromCloud(Boolean(force)));
 
 // Xuat danh sach gian hang + tai khoan cua 1 thanh vien ra file JSON de gui cho nhan vien do
 ipcMain.handle('shops:exportMember', async (_e, payload) => {

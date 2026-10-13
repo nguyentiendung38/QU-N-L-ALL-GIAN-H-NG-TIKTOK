@@ -142,11 +142,57 @@ function applyRoleUI() {
 
   $('membersBtn').classList.toggle('hidden', isMem);
   $('exportBtn').classList.toggle('hidden', isMem);
+  $('importBtn').classList.toggle('hidden', isMem);
   $('addBtn').classList.toggle('hidden', isMem);
   $('memberFilterSelect').classList.toggle('hidden', isMem);
   if ($('checkAllProxyBtn')) $('checkAllProxyBtn').classList.toggle('hidden', isMem);
   $('backToAdminBtn').classList.toggle('hidden', !(isMem && currentUser.isAdminPreview));
-  $('importBtn').textContent = isMem ? '📥 Nạp shop từ Admin' : '⬆ Nhập Backup';
+}
+
+async function syncFromCloud(force = false, silent = true) {
+  const statusEl = $('loginCloudStatus');
+  const headerBtn = $('cloudSyncBtn');
+  if (!silent) {
+    if (statusEl) statusEl.textContent = '⏳ Đang đồng bộ dữ liệu Online...';
+    if (headerBtn) headerBtn.textContent = '⏳ Đang đồng bộ...';
+  }
+  const r = await window.api.cloudPull(force);
+  if (r && r.ok) {
+    shops = r.shops || shops;
+    members = r.members || members;
+    if (r.authConfig) authConfig = r.authConfig;
+
+    if (isMemberMode() && currentUser && currentUser.member) {
+      const updatedMember = members.find((m) => m.id === currentUser.member.id);
+      if (updatedMember) {
+        currentUser.member = updatedMember;
+      }
+    }
+
+    if (statusEl) {
+      statusEl.textContent = `☁️ Online: ${shops.length} gian • ${members.length} TV`;
+    }
+    if (headerBtn) {
+      headerBtn.textContent = '☁️ Đã đồng bộ Online';
+    }
+
+    if (!currentUser) {
+      renderLoginQuickAccounts();
+    } else if (r.updated || !silent) {
+      render();
+    }
+
+    if (!silent) {
+      toast(`☁️ Đã đồng bộ Online mới nhất (${shops.length} gian hàng • ${members.length} thành viên)!`);
+    }
+    return true;
+  } else {
+    if (headerBtn) headerBtn.textContent = '☁️ Đồng bộ Online';
+    if (!silent) {
+      toast('⚠️ Không kết nối được máy chủ Cloud, đang dùng dữ liệu trên máy.');
+    }
+    return false;
+  }
 }
 
 // ---- MAN HINH DANG NHAP BAT BUOC KHI MO APP (ADMIN & NHAN VIEN) ----
@@ -203,9 +249,19 @@ function showLoginScreen() {
   renderLoginQuickAccounts();
   $('loginOverlay').classList.remove('hidden');
   setTimeout(() => $('loginUser').focus(), 50);
+  syncFromCloud(false, true);
 }
 
-function doLogin() {
+function findMatchingMember(u, p) {
+  return members.find((m) => {
+    const mUser = (m.username || slugUsername(m.name) || '').toLowerCase();
+    const mName = (m.name || '').trim().toLowerCase();
+    const mPass = m.password || '123456';
+    return (u.toLowerCase() === mUser || u.toLowerCase() === mName) && p === mPass;
+  });
+}
+
+async function doLogin() {
   const u = $('loginUser').value.trim();
   const p = $('loginPass').value.trim();
   const errBox = $('loginError');
@@ -216,27 +272,35 @@ function doLogin() {
     return;
   }
 
+  const checkAdmin = () => {
+    const adminU = (authConfig.adminUser || 'admin').toLowerCase();
+    const adminP = authConfig.adminPass || '123456';
+    return u.toLowerCase() === adminU && p === adminP;
+  };
+
+  // Neu chua khop ngay tren may -> tu dong tai du lieu Online moi nhat tu Cloud roi kiem tra lai
+  if (!checkAdmin() && !findMatchingMember(u, p)) {
+    $('loginSubmitBtn').disabled = true;
+    $('loginSubmitBtn').textContent = '⏳ Đang đồng bộ tài khoản Online...';
+    await syncFromCloud(true, true);
+    $('loginSubmitBtn').disabled = false;
+    $('loginSubmitBtn').textContent = '🔐 Đăng nhập vào hệ thống';
+  }
+
   // Kiem tra tai khoan Admin
-  const adminU = (authConfig.adminUser || 'admin').toLowerCase();
-  const adminP = authConfig.adminPass || '123456';
-  if (u.toLowerCase() === adminU && p === adminP) {
+  if (checkAdmin()) {
     currentUser = { roleType: 'admin', member: null, isAdminPreview: false };
     activeMember = 'ALL';
     document.body.classList.remove('locked');
     $('loginOverlay').classList.add('hidden');
     render();
     toast('👑 Đã đăng nhập quyền Quản trị viên (Admin)!');
+    syncFromCloud(false, true);
     return;
   }
 
   // Kiem tra tai khoan Thanh vien (Nhan vien)
-  const foundMember = members.find((m) => {
-    const mUser = (m.username || slugUsername(m.name) || '').toLowerCase();
-    const mName = (m.name || '').trim().toLowerCase();
-    const mPass = m.password || '123456';
-    return (u.toLowerCase() === mUser || u.toLowerCase() === mName) && p === mPass;
-  });
-
+  const foundMember = findMatchingMember(u, p);
   if (foundMember) {
     currentUser = { roleType: 'member', member: foundMember, isAdminPreview: false };
     activeMember = foundMember.id;
@@ -245,7 +309,8 @@ function doLogin() {
     $('loginOverlay').classList.add('hidden');
     render();
     const assignedCount = getMemberShops(foundMember.id).length;
-    toast(`👤 Xin chào ${foundMember.name}! Bạn đang quản lý ${assignedCount} gian hàng.`);
+    toast(`👤 Xin chào ${foundMember.name}! Bạn đang quản lý ${assignedCount} gian hàng (Đã đồng bộ Online).`);
+    syncFromCloud(false, true);
     return;
   }
 
@@ -269,24 +334,17 @@ $('backToAdminBtn').onclick = () => {
   toast('👑 Đã quay lại giao diện Quản trị viên (Admin)');
 };
 
-$('loginImportPkgBtn').onclick = async () => {
-  const r = await window.api.importShops();
-  if (r && r.ok) {
-    shops = r.shops || (await window.api.getShops());
-    members = r.members || (await window.api.getMembers()) || [];
-    renderLoginQuickAccounts();
-    if (r.importedMember && r.importedMember.id) {
-      const m = r.importedMember;
-      $('loginUser').value = m.username || slugUsername(m.name) || m.name;
-      $('loginPass').focus();
-      toast(`Đã nạp gói phân quyền của nhân viên ${m.name} (${r.added + r.updated} gian)! Hãy nhập mật khẩu để đăng nhập.`);
-    } else {
-      toast(`Đã nạp dữ liệu thành công (${shops.length} gian, ${members.length} thành viên)!`);
+if ($('loginCloudSyncBtn')) {
+  $('loginCloudSyncBtn').onclick = () => syncFromCloud(true, false);
+}
+if ($('cloudSyncBtn')) {
+  $('cloudSyncBtn').onclick = async () => {
+    if (!isMemberMode()) {
+      await window.api.cloudPush();
     }
-  } else if (r && !r.canceled) {
-    toast('Lỗi nạp file: ' + (r.error || 'không rõ'));
-  }
-};
+    await syncFromCloud(true, false);
+  };
+}
 
 function formatProxyBadge(proxy) {
   if (!proxy || !String(proxy).trim()) return '';
@@ -1333,25 +1391,19 @@ function renderMembersListModal() {
     );
     openAllMemberBtn.disabled = mShops.length === 0;
 
-    const exportMemberBtn = mkBtn(
-      '📤 Xuất file cho NV',
+    const copyCredBtn = mkBtn(
+      '📋 Copy TK/MK gửi NV',
       'small',
       async () => {
-        if (!mShops.length) {
-          return toast(`Hãy giao ít nhất 1 gian hàng cho ${m.name} trước khi xuất file!`);
-        }
-        const r = await window.api.exportMemberShops({
-          member: { ...m, username: uname, password: upass, permMode: pMode },
-          memberName: m.name,
-          shops: mShops
-        });
-        if (r && r.ok) {
-          toast(`Đã xuất gói phân quyền (${r.count} gian + tài khoản ${uname}) cho ${m.name}!`);
-        } else if (r && !r.canceled) {
-          toast('Lỗi xuất file: ' + (r.error || 'không rõ'));
+        const text = `Tài khoản đăng nhập App TikTok MultiShop (${getPermModeLabel(pMode)}):\n- Tài khoản: ${uname}\n- Mật khẩu: ${upass}\n- Số gian hàng được giao: ${mShops.length} gian`;
+        try {
+          await navigator.clipboard.writeText(text);
+          toast(`📋 Đã copy Tài khoản & Mật khẩu của ${m.name}! Gửi cho nhân viên đăng nhập trên máy họ là tự động đồng bộ.`);
+        } catch {
+          toast(`TK: ${uname} | MK: ${upass}`);
         }
       },
-      'Xuất file .json chứa tài khoản + các gian được giao của nhân viên này để gửi qua máy nhân viên nạp vào'
+      'Copy nhanh Tài khoản & Mật khẩu để gửi qua Zalo cho nhân viên đăng nhập trên máy riêng'
     );
 
     const editBtn = mkBtn('✏️ Sửa / Chia shop', 'small', () => startEditMember(m));
@@ -1369,10 +1421,10 @@ function renderMembersListModal() {
       await persist();
       renderMembersListModal();
       render();
-      toast(`Đã xóa thành viên ${m.name}`);
+      toast(`Đã xóa thành viên ${m.name} (Đã đồng bộ Online)`);
     });
 
-    actions.append(viewAsMemberBtn, openAllMemberBtn, exportMemberBtn, editBtn, delBtn);
+    actions.append(viewAsMemberBtn, openAllMemberBtn, copyCredBtn, editBtn, delBtn);
     card.appendChild(actions);
     box.appendChild(card);
   });
@@ -1533,4 +1585,8 @@ $('pickBrowserBtn').onclick = async () => {
   refreshBrowser();
   // Bat buoc luon vao man hinh Dang nhap khi mo app
   showLoginScreen();
+  // Tu dong dong bo Online ngam moi 12 giay giua may Admin va may Nhan vien
+  setInterval(() => {
+    syncFromCloud(false, true);
+  }, 12000);
 })();

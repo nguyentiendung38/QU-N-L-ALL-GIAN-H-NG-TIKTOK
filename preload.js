@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('api', {
   saveMembers: (members) => ipcRenderer.invoke('members:save', members),
   getAuthConfig: () => ipcRenderer.invoke('auth:get'),
   saveAuthConfig: (cfg) => ipcRenderer.invoke('auth:save', cfg),
+  cloudPull: (force) => ipcRenderer.invoke('cloud:pull', Boolean(force)),
+  cloudPush: () => ipcRenderer.invoke('cloud:push'),
   openShop: (id, which) => ipcRenderer.invoke('shop:open', id, which),
   closeShop: (id) => ipcRenderer.invoke('shop:close', id),
   closeAllShops: () => ipcRenderer.invoke('shops:closeAll'),
