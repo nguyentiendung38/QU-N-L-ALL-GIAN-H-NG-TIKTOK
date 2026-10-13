@@ -1,8 +1,8 @@
 {
-  "version": "2.1.1",
-  "buildNumber": 211,
+  "version": "2.1.2",
+  "buildNumber": 212,
   "updatedAt": "2026-10-13",
-  "notes": "Bổ sung tính năng tự động cập nhật và kiểm tra phiên bản mới",
+  "notes": "v2.1.2",
   "files": [
     "index.html",
     "renderer.js",
