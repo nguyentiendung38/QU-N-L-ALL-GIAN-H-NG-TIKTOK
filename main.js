@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { initSecurity } = require('./security');
 
@@ -366,12 +368,89 @@ function ensureExtensionPinned(profileDir) {
   } catch {}
 }
 
+function sendCdpCommand(port, wsPath, messageObj) {
+  return new Promise((resolve) => {
+    try {
+      const key = crypto.randomBytes(16).toString('base64');
+      const req = http.request({
+        host: '127.0.0.1',
+        port,
+        path: wsPath,
+        headers: {
+          Connection: 'Upgrade',
+          Upgrade: 'websocket',
+          'Sec-WebSocket-Version': '13',
+          'Sec-WebSocket-Key': key
+        },
+        timeout: 4000
+      });
+
+      req.on('upgrade', (_res, socket) => {
+        const payload = Buffer.from(JSON.stringify(messageObj), 'utf8');
+        const mask = crypto.randomBytes(4);
+        let header;
+        if (payload.length < 126) {
+          header = Buffer.alloc(2);
+          header[0] = 0x81;
+          header[1] = 0x80 | payload.length;
+        } else {
+          header = Buffer.alloc(4);
+          header[0] = 0x81;
+          header[1] = 0x80 | 126;
+          header.writeUInt16BE(payload.length, 2);
+        }
+        const masked = Buffer.alloc(payload.length);
+        for (let i = 0; i < payload.length; i++) {
+          masked[i] = payload[i] ^ mask[i & 3];
+        }
+        socket.write(Buffer.concat([header, mask, masked]));
+
+        const closeTimer = setTimeout(() => {
+          try {
+            socket.destroy();
+          } catch {}
+          resolve(false);
+        }, 4000);
+
+        socket.on('data', (chunk) => {
+          const str = chunk.toString('utf8');
+          if (str.includes('result') || str.includes('error')) {
+            clearTimeout(closeTimer);
+            try {
+              socket.destroy();
+            } catch {}
+            resolve(str.includes('result'));
+          }
+        });
+
+        socket.on('error', () => {
+          clearTimeout(closeTimer);
+          resolve(false);
+        });
+      });
+
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        try {
+          req.destroy();
+        } catch {}
+        resolve(false);
+      });
+      req.end();
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 function loadExtensionViaCDP(profileDir, extDir) {
-  if (!extDir || typeof WebSocket === 'undefined') return;
+  if (!extDir) return;
   const portFile = path.join(profileDir, 'DevToolsActivePort');
   let attempts = 0;
+  let busy = false;
 
-  const timer = setInterval(() => {
+  const timer = setInterval(async () => {
+    if (busy) return;
     attempts++;
     if (attempts > 60) {
       clearInterval(timer);
@@ -391,37 +470,17 @@ function loadExtensionViaCDP(profileDir, extDir) {
     const wsPath = lines[1].trim();
     if (!port || !wsPath) return;
 
-    clearInterval(timer);
-    try {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}${wsPath}`);
-      const closeTimer = setTimeout(() => {
-        try {
-          ws.close();
-        } catch {}
-      }, 5000);
-
-      ws.onopen = () => {
-        try {
-          ws.send(
-            JSON.stringify({
-              id: 1,
-              method: 'Extensions.loadUnpacked',
-              params: { path: extDir }
-            })
-          );
-        } catch {}
-      };
-      ws.onmessage = () => {
-        clearTimeout(closeTimer);
-        try {
-          ws.close();
-        } catch {}
-      };
-      ws.onerror = () => {
-        clearTimeout(closeTimer);
-      };
-    } catch {}
-  }, 250);
+    busy = true;
+    const ok = await sendCdpCommand(port, wsPath, {
+      id: 1,
+      method: 'Extensions.loadUnpacked',
+      params: { path: extDir }
+    });
+    busy = false;
+    if (ok) {
+      clearInterval(timer);
+    }
+  }, 300);
 }
 
 // Mo gian: neu Chrome cua gian da mo thi dua len tren, neu chua thi chay Chrome voi profile rieng.
@@ -453,6 +512,8 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
     } catch { }
   }
 
+  const extDir = getExtensionDir();
+
   // Kiem tra neu Chrome cua gian nay dang chay: dua cua so cu len tren va KHONG mo Chrome moi
   const focusRes = await focusShopWindow(knownPid, dir);
   if (focusRes.ok) {
@@ -460,11 +521,13 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
     try {
       fs.writeFileSync(pidFile, String(focusRes.pid), 'utf8');
     } catch { }
+    if (extDir) {
+      loadExtensionViaCDP(dir, extDir);
+    }
     return { ok: true, alreadyOpen: true };
   }
 
   // Chuan bi extension TikTok GMV Video Selector de tu dong nap vao Chrome
-  const extDir = getExtensionDir();
   ensureExtensionPinned(dir);
   try {
     fs.unlinkSync(path.join(dir, 'DevToolsActivePort'));
@@ -559,5 +622,19 @@ app.on('second-instance', () => {
   }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  try {
+    const extDir = getExtensionDir();
+    const root = profilesRoot();
+    if (extDir && fs.existsSync(root)) {
+      for (const name of fs.readdirSync(root)) {
+        const pDir = path.join(root, name);
+        if (fs.existsSync(path.join(pDir, 'DevToolsActivePort'))) {
+          loadExtensionViaCDP(pDir, extDir);
+        }
+      }
+    }
+  } catch {}
+});
 app.on('window-all-closed', () => app.quit());
