@@ -18,6 +18,12 @@
     "files": [
       "**/*"
     ],
+    "extraResources": [
+      {
+        "from": "extension",
+        "to": "extension"
+      }
+    ],
     "win": {
       "target": [
         "nsis",

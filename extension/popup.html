@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>GMV Video Selector</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 300px;
+      padding: 12px;
+      background: #f5f6f8;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #111111;
+    }
+    :root {
+      color-scheme: light;
+    }
+    .panel {
+      background: #ffffff;
+      border: 1px solid #e4e7ec;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+    .header {
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid #edf0f3;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .header-copy h1 {
+      font-size: 13px;
+      font-weight: 800;
+      color: #111111;
+      line-height: 1.15;
+    }
+    .header-copy p {
+      margin-top: 2px;
+      font-size: 10px;
+      color: #5f6b7a;
+      line-height: 1.35;
+    }
+    .badge {
+      min-width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #ff6b35, #ff9f43);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    }
+    .content {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .stat-card,
+    .group {
+      background: #fafbfc;
+      border: 1px solid #e7ebf0;
+      border-radius: 12px;
+      padding: 10px;
+    }
+    .stat-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: #5f6b7a;
+    }
+    .stat-card b {
+      font-size: 14px;
+      color: #111111;
+      font-weight: 800;
+    }
+    .stat-card .left {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .subtle {
+      color: #6b7280;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 130px;
+      text-align: right;
+    }
+    .group-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .row + .row { margin-top: 8px; }
+    .hint {
+      font-size: 11px;
+      color: #4b5563;
+      flex-shrink: 0;
+    }
+    .input-count,
+    .input-dur,
+    .select-mode,
+    .btn {
+      border-radius: 10px;
+      outline: none;
+      font-size: 11px;
+    }
+    .input-count,
+    .input-dur,
+    .select-mode {
+      border: 1px solid #d6dbe3;
+      background: #ffffff;
+      color: #111111;
+      height: 32px;
+    }
+    .input-count,
+    .input-dur {
+      text-align: center;
+      font-weight: 700;
+      padding: 0 7px;
+    }
+    .input-count {
+      width: 68px;
+      color: #111111;
+    }
+    .select-mode {
+      width: 100%;
+      padding: 0 8px;
+      font-weight: 600;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, #6b7280 50%),
+        linear-gradient(135deg, #6b7280 50%, transparent 50%);
+      background-position:
+        calc(100% - 14px) calc(50% - 1px),
+        calc(100% - 9px) calc(50% - 1px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 24px;
+    }
+    .select-mode option {
+      background: #ffffff;
+      color: #111111;
+    }
+    .duration-range {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .input-dur {
+      width: 100%;
+      color: #111111;
+    }
+    .input-dur:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      background: #f3f4f6;
+    }
+    .sep {
+      font-size: 12px;
+      color: #6b7280;
+      text-align: center;
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .btn {
+      border: none;
+      min-height: 38px;
+      padding: 0 10px;
+      cursor: pointer;
+      color: #fff;
+      font-weight: 700;
+      transition: transform 0.12s ease, filter 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    }
+    .btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled {
+      cursor: wait;
+      opacity: 0.92;
+    }
+    .g-green { background: linear-gradient(135deg, #00a886, #68c56f); }
+    .g-red { background: linear-gradient(135deg, #d93a63, #a91d3a); }
+    .g-blue { background: linear-gradient(135deg, #287cff, #1dc8ff); }
+    .g-blue.is-loading {
+      background: linear-gradient(135deg, #0f62fe, #36c7ff);
+      box-shadow: 0 0 0 4px rgba(29, 200, 255, 0.22);
+      animation: bulk-pulse 1s ease-in-out infinite;
+    }
+    .g-blue.is-done {
+      background: linear-gradient(135deg, #0f9f6e, #5ad67d);
+      box-shadow: 0 8px 18px rgba(15, 159, 110, 0.22);
+    }
+    .btn-wide { width: 100%; }
+    .status {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 12px;
+      color: #111111;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .input-count::placeholder,
+    .input-dur::placeholder {
+      color: #9ca3af;
+    }
+    .input-count:focus,
+    .input-dur:focus,
+    .select-mode:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+    }
+    @keyframes bulk-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(29, 200, 255, 0.35); }
+      70% { box-shadow: 0 0 0 10px rgba(29, 200, 255, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(29, 200, 255, 0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="header">
+      <div class="header-copy">
+        <h1>GMV Video Selector</h1>
+        <p>Chon nhanh video cho chien dich GMV</p>
+      </div>
+      <div class="badge">GMV</div>
+    </div>
+
+    <div class="content">
+      <div class="stat-card">
+        <div class="left"><b id="count">--</b> <span>đã chọn</span></div>
+        <div class="subtle" id="active-tab-name">Tab: --</div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Thao tac nhanh</div>
+        <div class="row">
+          <span class="hint">So luong</span>
+          <input class="input-count" id="video-limit" type="number" min="1" max="1000" value="500">
+          <span class="hint">toi da 1000</span>
+        </div>
+        <div class="btn-grid row">
+          <button class="btn g-green" id="btn-start">Bắt đầu chọn</button>
+          <button class="btn g-blue" id="btn-all-page">Chọn hàng loạt</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">CHỌN THỜI GIAN</div>
+        <div class="row">
+          <select class="select-mode" id="duration-mode">
+            <option value="all">Tat ca video</option>
+            <option value="over30">Video tren 30s</option>
+            <option value="under30">Video duoi 30s</option>
+            <option value="custom">Tuy chinh Min - Max</option>
+          </select>
+        </div>
+        <div class="duration-range row">
+          <input class="input-dur" id="min-sec" type="number" min="0" value="30" placeholder="Min">
+          <span class="sep">-</span>
+          <input class="input-dur" id="max-sec" type="number" min="0" value="" placeholder="Max">
+          <span class="sep">giay</span>
+        </div>
+      </div>
+
+      <div class="status" id="status">San sang</div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

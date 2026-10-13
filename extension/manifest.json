@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "TikTok GMV Video Selector",
+  "version": "1.0.0",
+  "description": "Chọn nhanh video cho chiến dịch GMV trên TikTok Seller Center",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxbAdOPvwzegaYJJ81NhO3lkgh9FmNdbI4AH+IQI0ZLssQJRWRwhs1LtCtB2u1eGLtofNGxB4NWutSlUh7X74zXgWyw7/Ax24WVWybrRX2Cb96uItFit3Mv5IvnH7O4XiNTUgTJFEJ6u3TMnm/iHhRV+MOcxxNkLYlcOI2aWqk+OGb8VGp4PyR/+IHPlrvCraE3nNRi0wvhNQMylA1fxUr0zbpAeJRaic/AP+g/2P86dHX/eNwIVeRfqM0KhzB5gj3yGw/smZ4TYE3yHlah7WCcaGAEtacSEOugBWWlavPylO4DmCssiLFfp8m4POeyWGlYtzftbKZzG/51xnztQbmQIDAQAB",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": [
+    "https://*.tiktok.com/*",
+    "https://*.tiktokglobalshop.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.tiktok.com/*",
+        "https://*.tiktokglobalshop.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

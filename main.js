@@ -108,7 +108,6 @@ const runningShops = new Map();
 function focusShopWindow(pid, profileDir) {
   return new Promise((resolve) => {
     const targetPid = parseInt(pid, 10) || 0;
-
     if (process.platform === 'darwin') {
       const escapedDir = (profileDir || '').replace(/(["\\$`])/g, '\\$1');
       const sh = `
@@ -318,6 +317,113 @@ Write-Output "NOT_FOUND"
   });
 }
 
+const EXTENSION_ID = 'elhkhdcolgkmokglojljlidmahmlnofh';
+let cachedExtDir = null;
+
+function getExtensionDir() {
+  if (cachedExtDir && fs.existsSync(path.join(cachedExtDir, 'manifest.json'))) {
+    return cachedExtDir;
+  }
+
+  const candidates = [
+    process.resourcesPath && path.join(process.resourcesPath, 'extension'),
+    path.join(__dirname, 'extension'),
+    'F:\\tiktok-video-selector\\dist',
+    'F:\\tiktok-video-selector'
+  ].filter(Boolean);
+
+  const src = candidates.find((p) => fs.existsSync(path.join(p, 'manifest.json')));
+  if (!src) return null;
+
+  try {
+    const dest = path.join(app.getPath('userData'), 'extension');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.cpSync(src, dest, { recursive: true, force: true });
+    cachedExtDir = dest;
+    return dest;
+  } catch {
+    cachedExtDir = src;
+    return src;
+  }
+}
+
+function ensureExtensionPinned(profileDir) {
+  try {
+    const defDir = path.join(profileDir, 'Default');
+    fs.mkdirSync(defDir, { recursive: true });
+    const prefFile = path.join(defDir, 'Preferences');
+    const prefs = readJson(prefFile, {});
+    if (!prefs.extensions || typeof prefs.extensions !== 'object') {
+      prefs.extensions = {};
+    }
+    if (!Array.isArray(prefs.extensions.pinned_extensions)) {
+      prefs.extensions.pinned_extensions = [];
+    }
+    if (!prefs.extensions.pinned_extensions.includes(EXTENSION_ID)) {
+      prefs.extensions.pinned_extensions.push(EXTENSION_ID);
+      writeJson(prefFile, prefs);
+    }
+  } catch {}
+}
+
+function loadExtensionViaCDP(profileDir, extDir) {
+  if (!extDir || typeof WebSocket === 'undefined') return;
+  const portFile = path.join(profileDir, 'DevToolsActivePort');
+  let attempts = 0;
+
+  const timer = setInterval(() => {
+    attempts++;
+    if (attempts > 60) {
+      clearInterval(timer);
+      return;
+    }
+    if (!fs.existsSync(portFile)) return;
+
+    let lines;
+    try {
+      lines = fs.readFileSync(portFile, 'utf8').trim().split(/\r?\n/);
+    } catch {
+      return;
+    }
+    if (!lines || lines.length < 2) return;
+
+    const port = parseInt(lines[0], 10);
+    const wsPath = lines[1].trim();
+    if (!port || !wsPath) return;
+
+    clearInterval(timer);
+    try {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}${wsPath}`);
+      const closeTimer = setTimeout(() => {
+        try {
+          ws.close();
+        } catch {}
+      }, 5000);
+
+      ws.onopen = () => {
+        try {
+          ws.send(
+            JSON.stringify({
+              id: 1,
+              method: 'Extensions.loadUnpacked',
+              params: { path: extDir }
+            })
+          );
+        } catch {}
+      };
+      ws.onmessage = () => {
+        clearTimeout(closeTimer);
+        try {
+          ws.close();
+        } catch {}
+      };
+      ws.onerror = () => {
+        clearTimeout(closeTimer);
+      };
+    } catch {}
+  }, 250);
+}
+
 // Mo gian: neu Chrome cua gian da mo thi dua len tren, neu chua thi chay Chrome voi profile rieng.
 ipcMain.handle('shop:open', async (_e, id, which) => {
   const shop = readShops().find((s) => s.id === id);
@@ -344,7 +450,7 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
     try {
       const saved = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
       if (saved > 0) knownPid = saved;
-    } catch {}
+    } catch { }
   }
 
   // Kiem tra neu Chrome cua gian nay dang chay: dua cua so cu len tren va KHONG mo Chrome moi
@@ -353,12 +459,33 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
     runningShops.set(id, focusRes.pid);
     try {
       fs.writeFileSync(pidFile, String(focusRes.pid), 'utf8');
-    } catch {}
+    } catch { }
     return { ok: true, alreadyOpen: true };
   }
 
-  // Neu chua mo hoac da dong: mo Chrome moi
-  const args = [`--user-data-dir=${dir}`, '--no-first-run', '--no-default-browser-check', '--new-window', ...urls];
+  // Chuan bi extension TikTok GMV Video Selector de tu dong nap vao Chrome
+  const extDir = getExtensionDir();
+  ensureExtensionPinned(dir);
+  try {
+    fs.unlinkSync(path.join(dir, 'DevToolsActivePort'));
+  } catch {}
+
+  // Neu chua mo hoac da dong: mo Chrome moi kem extension
+  const args = [
+    `--user-data-dir=${dir}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--new-window'
+  ];
+  if (extDir) {
+    args.push(
+      '--enable-unsafe-extension-debugging',
+      '--remote-debugging-port=0',
+      '--disable-features=DisableLoadExtensionCommandLineSwitch',
+      `--load-extension=${extDir}`
+    );
+  }
+  args.push(...urls);
 
   return new Promise((resolve) => {
     let child;
@@ -372,13 +499,17 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
       runningShops.set(id, child.pid);
       try {
         fs.writeFileSync(pidFile, String(child.pid), 'utf8');
-      } catch {}
+      } catch { }
+
+      if (extDir) {
+        loadExtensionViaCDP(dir, extDir);
+      }
 
       child.once('exit', () => {
         runningShops.delete(id);
         try {
           fs.unlinkSync(pidFile);
-        } catch {}
+        } catch { }
       });
 
       child.unref();

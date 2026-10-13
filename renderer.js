@@ -63,8 +63,8 @@ function render() {
     const actions = document.createElement('div');
     actions.className = 'actions';
     actions.append(
-      mkBtn('📊 GMV Max / Ads', '', () => openShop(s, 'ads')),
-      mkBtn('📦 Check đơn', '', () => openShop(s, 'orders'))
+      mkBtn('GMV Max Ads', '', () => openShop(s, 'ads')),
+      mkBtn('Check đơn', '', () => openShop(s, 'orders'))
     );
     const both = mkBtn('Mở cả 2', 'primary both', () => openShop(s, 'both'));
     actions.append(both);
