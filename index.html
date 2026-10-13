@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>186 HOME - TikTok MultiShop</title>
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+  :root { --bg:#111418; --panel:#1a1e24; --line:#2a2f37; --text:#e8eaed; --muted:#8e959e; --teal:#0f9d94; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .brand-card { background: #fff; border-radius: 8px; padding: 6px 12px; display: flex; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+  .brand-logo { height: 34px; width: auto; display: block; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .spacer { flex: 1; }
+
+  .btn { border: 0; background: #2c333d; color: var(--text); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; }
+  .btn:hover { background: #38414d; }
+  .btn.primary { background: var(--teal); color: #fff; font-weight: 600; }
+  .btn.primary:hover { background: #12b3a9; }
+  .btn.danger:hover { background: #8a2c2c; }
+  .btn.small { padding: 5px 9px; font-size: 12px; }
+  .btn:disabled { opacity: .3; cursor: not-allowed; }
+
+  main { padding: 20px; }
+  .hint { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 16px; }
+  #notice { background: #3a2a14; border: 1px solid #7a5518; color: #f5d9a3; padding: 12px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; line-height: 1.6; }
+
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .card .bar { height: 5px; }
+  .card .head { display: flex; align-items: center; gap: 12px; padding: 14px 14px 6px; }
+  .avatar { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; flex: none; font-size: 16px; }
+  .card .name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 14px; }
+  .actions .both { grid-column: 1 / -1; padding: 10px 14px; }
+  .tools { display: flex; gap: 6px; padding: 8px 14px 12px; border-top: 1px solid var(--line); margin-top: auto; flex-wrap: wrap; }
+
+  #empty { text-align: center; color: var(--muted); padding: 60px 0; font-size: 15px; line-height: 1.8; }
+  #toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: #2c333d; border: 1px solid #3a414c; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 80vw; }
+  #toast.show { opacity: 1; }
+  .hidden { display: none !important; }
+
+  dialog { border: 1px solid #3a414c; background: #1f242b; color: var(--text); border-radius: 12px; padding: 22px; width: 480px; max-width: 94vw; }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h2 { margin: 0 0 14px; font-size: 17px; }
+  label { display: block; font-size: 12px; color: #9aa0a6; margin: 12px 0 4px; }
+  input[type=text] { width: 100%; padding: 9px 10px; border-radius: 6px; border: 1px solid #3a414c; background: #14181d; color: var(--text); font-size: 14px; font-family: inherit; }
+  input[type=color] { width: 60px; height: 34px; border: 0; background: transparent; padding: 0; }
+  .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  .mono { font-family: Consolas, monospace; font-size: 12px; color: #cfd3d8; word-break: break-all; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand-card"><img src="logo.png" alt="186 HOME" class="brand-logo"></div>
+  <h1>Quản lý gian hàng TikTok</h1>
+  <div class="spacer"></div>
+  <button class="btn" id="settingsBtn" title="Chọn trình duyệt dùng để mở gian">⚙ Trình duyệt</button>
+  <button class="btn primary" id="addBtn">+ Thêm gian hàng</button>
+</header>
+
+<main>
+  <div id="notice" class="hidden"></div>
+  <p class="hint">
+    Bấm <b>Mở cả 2</b> để mở GMV Max + Check đơn hàng của gian đó trong Chrome riêng.
+    Lần đầu mỗi gian: đăng nhập một lần trong cửa sổ Chrome hiện ra, những lần sau tự vào thẳng.
+    Mẹo: trong Chrome của từng gian, đặt <b>màu giao diện riêng</b> (⋮ → Tùy chỉnh Chrome → Màu) để không nhầm gian khi lên camp.
+  </p>
+  <div id="grid"></div>
+  <div id="empty" class="hidden">Chưa có gian nào.<br>Bấm “+ Thêm gian hàng” để bắt đầu.</div>
+</main>
+
+<div id="toast"></div>
+
+<dialog id="dlg">
+  <h2 id="dlgTitle">Thêm gian hàng</h2>
+  <label>Tên gian hàng</label>
+  <input type="text" id="fName" placeholder="VD: Gian A - Mỹ phẩm">
+  <label>Link GMV Max Ads</label>
+  <input type="text" id="fAds" placeholder="https://seller-vn.tiktok.com/ads-creation/dashboard?...">
+  <label>Link Check Đơn hàng</label>
+  <input type="text" id="fOrders" placeholder="https://seller-vn.tiktok.com/order?...">
+  <label>Màu nhận diện</label>
+  <input type="color" id="fColor" value="#0f9d94">
+  <div class="row">
+    <button class="btn" id="cancelBtn">Hủy</button>
+    <button class="btn primary" id="saveBtn">Lưu</button>
+  </div>
+</dialog>
+
+<dialog id="settingsDlg">
+  <h2>Trình duyệt dùng để mở gian</h2>
+  <p class="hint">Mặc định app tự tìm Google Chrome (nếu không có thì dùng Microsoft Edge).</p>
+  <div class="mono" id="browserPath">…</div>
+  <div class="row">
+    <button class="btn" id="pickBrowserBtn">Chọn file khác…</button>
+    <button class="btn primary" id="closeSettingsBtn">Đóng</button>
+  </div>
+</dialog>
+
+<script src="renderer.js"></script>
+</body>
+</html>

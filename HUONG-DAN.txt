@@ -1,0 +1,40 @@
+186 HOME - TIKTOK MULTISHOP (BAN LAUNCHER, MO BANG CHROME THAT)
+================================================================
+
+APP NAY LAM GI
+- App chi la BANG DANH SACH GIAN HANG. Bam vao gian nao thi mo CHROME THAT voi
+  profile rieng cua gian do (giong cach AdsPower/GoLogin). Trang TikTok chay trong Chrome
+  nen khong con lag nhu khi nhung trang vao trong app.
+- Moi gian = 1 profile Chrome rieng: dang nhap 1 lan, lan sau Chrome tu giu.
+
+CHAY THU
+1. Cai Node.js (ban LTS): https://nodejs.org  va Google Chrome (hoac Edge).
+2. Giai nen, mo CMD/PowerShell tai thu muc nay:
+      npm install
+      npm start
+3. Bam "+ Them gian hang", dat ten, dan link GMV Max va link Check don cua gian do, bam Luu.
+   (Neu truoc day da dung ban app cu, danh sach gian se tu duoc nhap vao.)
+4. Bam "Mo ca 2" -> Chrome mo ra -> DANG NHAP 1 LAN. Lan sau mo la vao thang.
+5. Lap lai cho tung gian. Gian moi chi can bam "+ Them gian hang".
+
+TAO ICON DESKTOP
+A. WINDOWS:
+   Cach 1 (file cai dat tu tao icon Desktop):  npm run build:installer
+      Chay file Setup trong "dist", app tu tao icon "186 HOME - TikTok MultiShop" ngoai Desktop.
+   Cach 2 (Portable, khong can cai):  npm run build:portable
+      Vao "dist", chuot phai file .exe -> Send to -> Desktop (create shortcut).
+B. MACBOOK:
+      npm install
+      npm run build:mac
+   Mo file .dmg trong "dist", keo app vao Applications, roi keo ra Dock/Desktop.
+
+LUU Y
+- NEN LAM 1 LAN cho moi gian: trong Chrome cua gian do, dat MAU GIAO DIEN rieng
+  (dau 3 cham -> Tuy chinh Chrome -> Mau) de nhin la biet dang o gian nao, tranh len nham camp.
+- Dang nhap cu trong app cu KHONG chuyen sang duoc: moi gian phai dang nhap lai 1 lan.
+- Du lieu dang nhap luu o thu muc "profiles" ben trong:
+  Windows: %APPDATA%\tiktok-multishop\profiles   (moi gian 1 thu muc rieng)
+- "Xoa dang nhap" / "Xoa gian": hay DONG cua so Chrome cua gian do truoc, neu khong se bao khong xoa duoc.
+- Muon doi trinh duyet (VD dung Edge): bam "Trinh duyet" tren dau app, chon file chrome.exe / msedge.exe.
+- Link Check don mac dinh khong con gan cung khoang ngay: TikTok tu mo ngay hien tai.
+- Mo nhieu gian cung luc se ton RAM nhu mo nhieu cua so Chrome. Chi mo gian dang can lam.

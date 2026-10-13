@@ -1,0 +1,48 @@
+{
+  "name": "tiktok-multishop",
+  "version": "2.0.0",
+  "description": "186 HOME - Quan ly nhieu gian hang TikTok Shop: moi gian mo bang Chrome that voi profile rieng",
+  "main": "main.js",
+  "author": "186 HOME",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build:portable": "electron-builder --win portable",
+    "build:installer": "electron-builder --win nsis",
+    "build:mac": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "local.tiktok.multishop",
+    "productName": "186 HOME - TikTok MultiShop",
+    "publish": null,
+    "files": [
+      "**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "186 HOME - TikTok MultiShop"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "icon.png",
+      "category": "public.app-category.business"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}
