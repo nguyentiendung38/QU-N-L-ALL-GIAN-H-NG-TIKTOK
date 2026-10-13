@@ -553,17 +553,23 @@ function render() {
     metaRow.className = 'meta-row';
 
     const assignedMembers = getShopMembers(s);
-    if (assignedMembers.length > 0) {
-      assignedMembers.forEach((m) => {
+    const displayMembers = isMemberMode()
+      ? [currentUser.member]
+      : (activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__'
+          ? assignedMembers.filter((m) => m.id === activeMember)
+          : assignedMembers);
+
+    if (displayMembers.length > 0) {
+      displayMembers.forEach((m) => {
         const mb = document.createElement('span');
         mb.className = 'badge member-badge';
-        const pTag = m.permMode === 'vanhanh' ? 'Vận hành' : (m.permMode === 'ads' ? 'Ads' : 'CSKH');
-        mb.title = `Phụ trách: ${m.name} (${pTag})`;
+        const pTag = m.permMode === 'vanhanh' ? '📦 Vận hành' : (m.permMode === 'ads' ? '📈 Ads' : '🎧 CSKH');
+        mb.title = `Bộ phận ${pTag} — Phụ trách: ${m.name}`;
         const dot = document.createElement('span');
         dot.className = 'member-dot';
         dot.style.background = m.color || '#388bfd';
         const txt = document.createElement('span');
-        txt.textContent = `${m.name} • ${pTag}`;
+        txt.textContent = `${pTag}: ${m.name}`;
         mb.append(dot, txt);
         if (!isMemberMode()) {
           mb.onclick = () => {
