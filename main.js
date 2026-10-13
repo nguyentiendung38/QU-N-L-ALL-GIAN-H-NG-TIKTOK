@@ -579,6 +579,83 @@ ipcMain.handle('auth:save', (_e, cfg) => {
 ipcMain.handle('cloud:push', () => pushToCloudNow());
 ipcMain.handle('cloud:pull', (_e, force) => pullFromCloud(Boolean(force)));
 
+// Dong bo trang thai dang mo / dang dong cua cac gian hang qua Cloud giua may Admin va Nhan vien
+ipcMain.handle('cloud:reportActive', async (_e, data) => {
+  try {
+    const s = readJson(settingsFile(), {});
+    const cloudKey = (s.cloudKey || DEFAULT_CLOUD_KEY).trim();
+    const rawKey = (data && data.userKey ? String(data.userKey).trim() : 'admin');
+    const userKey = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const who = (data && data.userName ? String(data.userName).trim() : 'Admin');
+    const shops = (data && Array.isArray(data.shopIds)) ? data.shopIds : [];
+    const payload = {
+      who,
+      time: Date.now(),
+      shops
+    };
+    const b64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    const r = await httpsReq(
+      `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/act_${userKey}/${b64}`,
+      'POST',
+      ''
+    );
+    return { ok: r.status === 200 };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('cloud:getActive', async () => {
+  try {
+    const s = readJson(settingsFile(), {});
+    const cloudKey = (s.cloudKey || DEFAULT_CLOUD_KEY).trim();
+    const members = readMembers();
+    const keysToCheck = ['admin', ...members.map((m) => String(m.id).trim().replace(/[^a-zA-Z0-9_-]/g, '_'))];
+    const uniqueKeys = Array.from(new Set(keysToCheck));
+
+    const results = await Promise.all(
+      uniqueKeys.map(async (k) => {
+        try {
+          const res = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${cloudKey}/act_${k}`, 'GET');
+          if (res.status === 200 && res.body) {
+            let raw = res.body.trim();
+            if (raw.startsWith('"') && raw.endsWith('"')) {
+              try { raw = JSON.parse(raw); } catch {}
+            }
+            if (raw && raw !== 'OFF') {
+              const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+              return { key: k, data: parsed };
+            }
+          }
+        } catch {}
+        return null;
+      })
+    );
+
+    const activeMap = {};
+    const now = Date.now();
+    const TTL = 50 * 1000; // 50 giay timeout phong khi tat may dot ngot
+
+    for (const item of results) {
+      if (!item || !item.data) continue;
+      const { who, time, shops } = item.data;
+      if (now - time > TTL) continue;
+      if (Array.isArray(shops)) {
+        for (const sid of shops) {
+          activeMap[sid] = {
+            who: who || 'Nhân viên',
+            userKey: item.key,
+            time
+          };
+        }
+      }
+    }
+    return activeMap;
+  } catch (e) {
+    return {};
+  }
+});
+
 // Xuat danh sach gian hang + tai khoan cua 1 thanh vien ra file JSON de gui cho nhan vien do
 ipcMain.handle('shops:exportMember', async (_e, payload) => {
   const member = payload && payload.member ? payload.member : null;

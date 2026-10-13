@@ -1,8 +1,8 @@
 {
-  "version": "2.1.8",
-  "buildNumber": 218,
+  "version": "2.1.9",
+  "buildNumber": 219,
   "updatedAt": "2026-10-13",
-  "notes": "Bo nut mui ten, tich hop keo tha truc quan de doi thu tu gian hang",
+  "notes": "Xoa icon Giao TV; Dong bo realtime trang thai gian hang dang mo giua may Admin va Nhan vien",
   "files": [
     "index.html",
     "renderer.js",
