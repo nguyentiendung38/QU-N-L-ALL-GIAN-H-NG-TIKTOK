@@ -918,7 +918,7 @@
           <select id="mPermMode" class="member-filter-select" style="width:100%;padding:8px 10px;background:#12161b;border-color:#3a414c;">
             <option value="cskh">💬 Quyền CSKH (Mở 💬 CSKH - Check đơn hàng)</option>
             <option value="vanhanh">📦 Quyền Vận hành (Chỉ mở 📦 Đơn hàng To Ship)</option>
-            <option value="ads">📈 Quyền Ads (Mở GMV Max Ads & Check đơn)</option>
+            <option value="ads">📈 Quyền Ads (Mở GMV Max Ads)</option>
           </select>
         </div>
         <div>
@@ -929,11 +929,15 @@
 
       <div id="mCskhLinksBox" style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#10141a;border:1px solid rgba(15,157,148,.4);">
         <div id="mPermLinksTitle" style="font-size:11.5px;color:#56e3d8;font-weight:600;margin-bottom:4px;">
-          🔗 Link mở trang cho nhân viên CSKH:
+          🔗 Link mở trang khi phân quyền:
         </div>
         <div id="mCskhOrdersRow">
           <label style="margin-top:4px;" id="mCskhOrdersLabel">💬 Link mở CSKH (Check đơn hàng To Ship):</label>
           <input type="text" id="mCskhOrders" style="font-size:12px;padding:6px 8px;">
+        </div>
+        <div id="mAdsLinkRow" class="hidden">
+          <label style="margin-top:4px;" id="mAdsLinkLabel">📈 Link mở GMV Max Ads:</label>
+          <input type="text" id="mAdsUrl" style="font-size:12px;padding:6px 8px;" placeholder="https://seller-vn.tiktok.com/ads-creation/dashboard?...">
         </div>
       </div>
 

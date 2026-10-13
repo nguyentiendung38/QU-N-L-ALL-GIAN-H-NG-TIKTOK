@@ -1,5 +1,5 @@
 const DEFAULT_ADS =
-  'https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&btm_pre_unit_params=%7B%22btm_origin%22%3A%22sidebar_menu_Qu%E1%BA%A3ng+c%C3%A1o+c%E1%BB%ADa+h%C3%A0ng%22%7D';
+  'https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&btm_pre_unit_params=%7B%22btm_origin%22%3A%22sidebar_menu_Qu%E1%BA%A3ng+c%C3%A1o+c%E1%BB%ADa+h%C3%A0ng%22%7D&mpa=1&activated_tab_id=0&shop_region=VN';
 const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=all';
 const DEFAULT_CSKH_CHAT =
   'https://seller-vn.tiktok.com/chat/inbox/current?oec_seller_id=7494826072462165266&shop_region=VN&lang=en&from=seller_center_navigation_im';
@@ -87,7 +87,7 @@ function getPermModeLabel(permMode) {
 function getOpenActionForMode(permMode) {
   if (permMode === 'vanhanh') return 'cskh_orders';
   if (permMode === 'cskh') return 'cskh_orders';
-  if (permMode === 'ads') return 'both';
+  if (permMode === 'ads') return 'ads';
   return 'tiktok';
 }
 
@@ -763,17 +763,14 @@ function render() {
       );
       actions.append(cskhBtn);
     } else {
-      // Quyền Ads: HIỆN GMV Max Ads + Check đơn
-      actions.append(
-        mkBtn('GMV Max Ads', '', () => openShop(s, 'ads'), 'Mở trang GMV Max Ads TikTok Seller'),
-        mkBtn('Check đơn', '', () => openShop(s, 'orders'), 'Mở trang Quản lý đơn hàng')
-      );
-      const bothAds = mkBtn(
-        isRunning ? '⚡ Đưa cửa sổ lên trước' : '🚀 Mở cả 2 (Ads + Check đơn)',
+      // Quyền Ads: 1 nút duy nhất mở GMV Max Ads
+      const adsBtn = mkBtn(
+        isRunning ? '⚡ Đưa cửa sổ lên trước (GMV Max Ads)' : '📈 GMV Max Ads',
         'primary both',
-        () => openShop(s, 'both')
+        () => openShop(s, 'ads'),
+        'Mở trang GMV Max Ads TikTok Seller'
       );
-      actions.append(bothAds);
+      actions.append(adsBtn);
     }
 
     if (isRunning) {
@@ -844,9 +841,15 @@ async function openShop(s, which) {
     }
   }
 
-  let r = await window.api.openShop(s.id, which);
+  let overrideUrl = '';
+  if (isMemberMode() && currentUser && currentUser.member) {
+    if (which === 'ads') overrideUrl = currentUser.member.adsUrl || s.adsUrl || DEFAULT_ADS;
+    if (which === 'cskh_orders') overrideUrl = currentUser.member.cskhOrdersUrl || s.cskhOrdersUrl || DEFAULT_CSKH_ORDERS;
+  }
+
+  let r = await window.api.openShop(s.id, which, overrideUrl);
   if (r && !r.ok && r.error === 'Thieu link de mo') {
-    r = await window.api.openShop(s.id, 'ads');
+    r = await window.api.openShop(s.id, 'ads', overrideUrl);
   }
   if (r && r.ok) {
     runningIds.add(s.id);
@@ -1149,12 +1152,22 @@ function updateMemberPermLinksUI() {
   const mode = $('mPermMode').value || 'cskh';
   const isAds = mode === 'ads';
   const isVanhanh = mode === 'vanhanh';
-  $('mCskhLinksBox').classList.toggle('hidden', isAds);
-  if ($('mPermLinksTitle')) {
-    $('mPermLinksTitle').textContent = isVanhanh
-      ? '🔗 Link mở trang cho nhân viên Vận hành:'
-      : '🔗 Link mở trang cho nhân viên CSKH:';
+
+  if ($('mAdsLinkRow')) {
+    $('mAdsLinkRow').classList.toggle('hidden', !isAds);
   }
+  if ($('mCskhOrdersRow')) {
+    $('mCskhOrdersRow').classList.toggle('hidden', isAds);
+  }
+
+  if ($('mPermLinksTitle')) {
+    $('mPermLinksTitle').textContent = isAds
+      ? '🔗 Link mở trang cho nhân viên Ads:'
+      : (isVanhanh
+        ? '🔗 Link mở trang cho nhân viên Vận hành:'
+        : '🔗 Link mở trang cho nhân viên CSKH:');
+  }
+
   if ($('mCskhOrdersLabel')) {
     $('mCskhOrdersLabel').textContent = isVanhanh
       ? '📦 Link mở Đơn hàng (To Ship):'
@@ -1174,6 +1187,7 @@ function resetMemberForm() {
   $('mPermMode').value = 'cskh';
   if ($('mCskhChat')) $('mCskhChat').value = '';
   $('mCskhOrders').value = DEFAULT_CSKH_ORDERS;
+  if ($('mAdsUrl')) $('mAdsUrl').value = DEFAULT_ADS;
   updateMemberPermLinksUI();
   $('mPhone').value = '';
   $('mColor').value = randomMemberColor();
@@ -1192,6 +1206,7 @@ function startEditMember(m) {
   $('mPermMode').value = m.permMode || 'cskh';
   if ($('mCskhChat')) $('mCskhChat').value = '';
   $('mCskhOrders').value = m.cskhOrdersUrl || DEFAULT_CSKH_ORDERS;
+  if ($('mAdsUrl')) $('mAdsUrl').value = m.adsUrl || DEFAULT_ADS;
   updateMemberPermLinksUI();
   $('mPhone').value = m.phone || '';
   $('mColor').value = m.color || '#388bfd';
@@ -1417,6 +1432,7 @@ $('mSaveBtn').onclick = async () => {
   const password = $('mPassword').value.trim() || '123456';
   const permMode = $('mPermMode').value || 'cskh';
   const role = permMode === 'vanhanh' ? 'Vận hành' : (permMode === 'cskh' ? 'CSKH' : 'Ads');
+  const adsUrl = ($('mAdsUrl') && $('mAdsUrl').value.trim()) || DEFAULT_ADS;
   const cskhOrdersUrl = $('mCskhOrders').value.trim() || DEFAULT_CSKH_ORDERS;
   const cskhChatUrl = ($('mCskhChat') && $('mCskhChat').value.trim()) || cskhOrdersUrl;
   const phone = $('mPhone').value.trim();
@@ -1429,14 +1445,14 @@ $('mSaveBtn').onclick = async () => {
   if (memberId) {
     const target = members.find((x) => x.id === memberId);
     if (target) {
-      Object.assign(target, { name, username, password, permMode, role, cskhChatUrl, cskhOrdersUrl, phone, color });
+      Object.assign(target, { name, username, password, permMode, role, adsUrl, cskhChatUrl, cskhOrdersUrl, phone, color });
     }
   } else {
     memberId = 'mem_' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
-    members.push({ id: memberId, name, username, password, permMode, role, cskhChatUrl, cskhOrdersUrl, phone, color });
+    members.push({ id: memberId, name, username, password, permMode, role, adsUrl, cskhChatUrl, cskhOrdersUrl, phone, color });
   }
 
-  // Cap nhat danh sach shop duoc giao cho thanh vien nay va gan luon duong link CSKH / Van hanh
+  // Cap nhat danh sach shop duoc giao cho thanh vien nay va gan luon duong link CSKH / Van hanh / Ads
   shops.forEach((s) => {
     const cur = new Set(Array.isArray(s.memberIds) ? s.memberIds : []);
     if (checkedShopIds.has(s.id)) {
@@ -1448,6 +1464,9 @@ $('mSaveBtn').onclick = async () => {
       } else if (permMode === 'vanhanh') {
         s.cskhOrdersUrl = cskhOrdersUrl;
         s.linkMode = 'vanhanh';
+      } else if (permMode === 'ads') {
+        s.adsUrl = adsUrl;
+        s.linkMode = 'ads';
       }
     } else {
       cur.delete(memberId);

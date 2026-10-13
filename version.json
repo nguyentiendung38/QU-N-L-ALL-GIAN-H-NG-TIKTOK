@@ -1,8 +1,8 @@
 {
-  "version": "2.1.6",
-  "buildNumber": 216,
+  "version": "2.1.7",
+  "buildNumber": 217,
   "updatedAt": "2026-10-13",
-  "notes": "CSKH: 1 nut CSKH duy nhat mo trang Check don hang To Ship, xoa link chat CSKH",
+  "notes": "Cap nhat link default Ads va cho phep dien link Ads trong phan quyen thanh vien",
   "files": [
     "index.html",
     "renderer.js",

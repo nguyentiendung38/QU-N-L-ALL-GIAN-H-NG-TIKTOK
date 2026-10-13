@@ -19,7 +19,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 const DEFAULT_ADS =
-  'https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&btm_pre_unit_params=%7B%22btm_origin%22%3A%22sidebar_menu_Qu%E1%BA%A3ng+c%C3%A1o+c%E1%BB%ADa+h%C3%A0ng%22%7D';
+  'https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&btm_pre_unit_params=%7B%22btm_origin%22%3A%22sidebar_menu_Qu%E1%BA%A3ng+c%C3%A1o+c%E1%BB%ADa+h%C3%A0ng%22%7D&mpa=1&activated_tab_id=0&shop_region=VN';
 // Khong gan cung khoang thoi gian: de TikTok tu mo ngay hien tai
 const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=all';
 const DEFAULT_CSKH_CHAT =
@@ -1464,7 +1464,7 @@ function loadExtensionViaCDP(profileDir, extDir) {
 }
 
 // Mo gian: neu Chrome cua gian da mo thi dua len tren, neu chua thi chay Chrome voi profile rieng.
-ipcMain.handle('shop:open', async (_e, id, which) => {
+ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
   const shop = readShops().find((s) => s.id === id);
   if (!shop) return { ok: false, error: 'Khong tim thay gian hang' };
 
@@ -1472,13 +1472,17 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
   if (!browser) return { ok: false, error: 'NO_BROWSER' };
 
   const urls = [];
-  if (which === 'tiktok' || which === 'seller') urls.push(shop.sellerUrl || 'https://seller-vn.tiktok.com/homepage');
-  if (which === 'ads' || which === 'both') urls.push(shop.adsUrl || shop.sellerUrl || DEFAULT_ADS);
-  if (which === 'orders' || which === 'both') urls.push(shop.ordersUrl || DEFAULT_ORDERS);
-  if (which === 'cskh' || which === 'cskh_orders' || which === 'cskh_both' || which === 'cskh_chat') {
-    urls.push(shop.cskhOrdersUrl || DEFAULT_CSKH_ORDERS);
+  if (overrideUrl && typeof overrideUrl === 'string' && overrideUrl.startsWith('http')) {
+    urls.push(overrideUrl);
+  } else {
+    if (which === 'tiktok' || which === 'seller') urls.push(shop.sellerUrl || 'https://seller-vn.tiktok.com/homepage');
+    if (which === 'ads' || which === 'both') urls.push(shop.adsUrl || shop.sellerUrl || DEFAULT_ADS);
+    if (which === 'orders' || which === 'both') urls.push(shop.ordersUrl || DEFAULT_ORDERS);
+    if (which === 'cskh' || which === 'cskh_orders' || which === 'cskh_both' || which === 'cskh_chat') {
+      urls.push(shop.cskhOrdersUrl || DEFAULT_CSKH_ORDERS);
+    }
+    if (!urls.length) urls.push(shop.sellerUrl || 'https://seller-vn.tiktok.com/homepage');
   }
-  if (!urls.length) urls.push(shop.sellerUrl || 'https://seller-vn.tiktok.com/homepage');
 
   const dir = path.join(profilesRoot(), safeId(id));
   try {

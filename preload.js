@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('api', {
   cloudPush: () => ipcRenderer.invoke('cloud:push'),
   checkOtaUpdate: () => ipcRenderer.invoke('ota:check'),
   applyOtaUpdate: () => ipcRenderer.invoke('ota:apply'),
-  openShop: (id, which) => ipcRenderer.invoke('shop:open', id, which),
+  openShop: (id, which, overrideUrl) => ipcRenderer.invoke('shop:open', id, which, overrideUrl),
   closeShop: (id) => ipcRenderer.invoke('shop:close', id),
   closeAllShops: () => ipcRenderer.invoke('shops:closeAll'),
   getRunningShops: () => ipcRenderer.invoke('shops:running'),
