@@ -500,6 +500,128 @@
     border-top: 1px solid #1f252e;
     padding-top: 8px;
   }
+
+  /* Login Overlay */
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(circle at top, #1b2432 0%, #0d1015 70%);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .login-card {
+    width: 430px;
+    max-width: 95vw;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    padding: 28px 26px 22px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.6);
+  }
+  .login-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin-bottom: 18px;
+  }
+  .login-head h2 {
+    margin: 12px 0 4px;
+    font-size: 19px;
+    font-weight: 700;
+  }
+  .login-head p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .login-error {
+    background: rgba(218,54,51,.16);
+    border: 1px solid rgba(218,54,51,.45);
+    color: #ff7b72;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    margin-bottom: 10px;
+  }
+  .login-quick-accounts {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #262c36;
+  }
+  .login-quick-title {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .login-quick-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .login-quick-pill {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .login-quick-pill:hover {
+    border-color: var(--teal);
+    color: #fff;
+  }
+  .user-role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+    border: 1px solid #30363d;
+    background: #1f242d;
+  }
+  .user-role-badge.admin {
+    background: rgba(245,165,36,.15);
+    border-color: rgba(245,165,36,.45);
+    color: #f5a524;
+  }
+  .user-role-badge.member {
+    background: rgba(15,157,148,.18);
+    border-color: rgba(15,157,148,.45);
+    color: #39d5cb;
+  }
+  .cred-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: Consolas, monospace;
+    font-size: 11.5px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    color: #79c0ff;
+  }
+  input[type=password] {
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 6px;
+    border: 1px solid #3a414c;
+    background: #12161b;
+    color: var(--text);
+    font-size: 13.5px;
+    font-family: inherit;
+  }
+  input[type=password]:focus { outline: none; border-color: var(--teal); }
   .proxy-input-row { display: flex; gap: 8px; align-items: center; }
   .proxy-input-row input { flex: 1; }
   .proxy-test-status { font-size: 12px; margin-top: 5px; min-height: 18px; }
@@ -595,18 +717,57 @@
 </style>
 </head>
 <body>
+
+<!-- MAN HINH DANG NHAP (ADMIN & NHAN VIEN) -->
+<div id="loginOverlay" class="login-overlay hidden">
+  <div class="login-card">
+    <div class="login-head">
+      <div class="brand-card"><img src="logo.png" alt="186 HOME" class="brand-logo"></div>
+      <h2>Đăng nhập Hệ thống</h2>
+      <p>Nhập tài khoản Quản trị viên hoặc Nhân viên được phân quyền</p>
+    </div>
+
+    <div id="loginError" class="login-error hidden"></div>
+
+    <label>Tài khoản đăng nhập (Username)</label>
+    <input type="text" id="loginUser" placeholder="VD: admin hoặc tên đăng nhập nhân viên">
+
+    <label>Mật khẩu (Password)</label>
+    <input type="password" id="loginPass" placeholder="Nhập mật khẩu...">
+
+    <button class="btn primary" id="loginSubmitBtn" style="width:100%;margin-top:16px;padding:10px;font-size:14px;">
+      🔐 Đăng nhập vào hệ thống
+    </button>
+
+    <div class="login-quick-accounts" id="loginQuickWrap">
+      <div class="login-quick-title">Chọn nhanh tài khoản trên máy này:</div>
+      <div class="login-quick-pills" id="loginQuickPills"></div>
+    </div>
+
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #262c36;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <button type="button" class="btn small" id="loginImportPkgBtn" title="Dành cho nhân viên cài app trên máy riêng: nạp file phân quyền .json do Admin gửi">
+        📥 Nạp file phân quyền từ Admin
+      </button>
+      <span style="font-size:11.5px;color:var(--muted);" id="loginDefaultHint">Admin mặc định: <b>admin / 123456</b></span>
+    </div>
+  </div>
+</div>
+
 <header>
   <div class="brand-card"><img src="logo.png" alt="186 HOME" class="brand-logo"></div>
   <div class="title-wrap">
     <h1>Quản lý gian hàng TikTok</h1>
     <div class="stats-badge" id="statsBadge">Tổng: <b>0</b> gian • <span class="open-count">🟢 0 đang mở</span></div>
+    <div class="user-role-badge admin" id="currentUserBadge">👑 Quản trị viên</div>
   </div>
   <div class="spacer"></div>
-  <button class="btn members-btn" id="membersBtn" title="Tạo thành viên và phân quyền quản lý gian hàng">👥 Thành viên (0)</button>
+  <button class="btn small success hidden" id="backToAdminBtn" title="Quay trở lại quyền Quản trị viên (Admin)">👑 Về lại Admin</button>
+  <button class="btn members-btn" id="membersBtn" title="Tạo tài khoản nhân viên và phân quyền quản lý gian hàng">👥 Thành viên (0)</button>
   <button class="btn" id="exportBtn" title="Xuất danh sách gian hàng ra file .json để sao lưu hoặc chuyển máy">⬇ Xuất Backup</button>
   <button class="btn" id="importBtn" title="Nhập danh sách gian hàng từ file .json">⬆ Nhập Backup</button>
   <button class="btn" id="settingsBtn" title="Chọn trình duyệt dùng để mở gian">⚙ Trình duyệt</button>
   <button class="btn primary" id="addBtn">+ Thêm gian hàng</button>
+  <button class="btn danger-outline" id="switchAccountBtn" title="Mở màn hình Đăng nhập để đổi sang tài khoản Nhân viên hoặc khóa máy">🔐 Đổi TK / Đăng xuất</button>
 </header>
 
 <div class="toolbar">
@@ -688,19 +849,37 @@
 </dialog>
 
 <dialog id="membersDlg">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-    <h2 style="margin:0;">👥 Quản lý thành viên & Phân chia Shop</h2>
-    <button class="btn small" id="closeMembersDlgBtn">✕ Đóng</button>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <h2 style="margin:0;">👥 Quản lý thành viên & Cấp tài khoản đăng nhập</h2>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <label style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12.5px;color:#cfd3d8;">
+        <input type="checkbox" id="requireLoginChk" style="accent-color:var(--teal);width:15px;height:15px;">
+        <span>🔒 Bắt buộc đăng nhập khi mở app</span>
+      </label>
+      <button class="btn small" id="changeAdminPassBtn" title="Đổi tài khoản / mật khẩu của Quản trị viên">🔑 Đổi MK Admin</button>
+      <button class="btn small" id="closeMembersDlgBtn">✕ Đóng</button>
+    </div>
   </div>
-  <p style="color: var(--muted); font-size: 12.5px; margin: 4px 0 12px;">
-    Tạo thành viên và tích chọn các gian hàng giao cho họ quản lý. Bạn có thể lọc theo thành viên hoặc <b>Xuất file riêng</b> chỉ chứa các shop của thành viên đó để gửi cho nhân viên nhập vào máy họ.
+  <p style="color: var(--muted); font-size: 12.5px; margin: 6px 0 12px;">
+    Cấp <b>Tài khoản & Mật khẩu</b> cho từng nhân viên và tích chọn các shop giao cho họ. Nhân viên bấm nút <b>🔐 Đổi TK / Đăng xuất</b> ở góc phải trên cùng (hoặc mở app lên) để đăng nhập vào giao diện riêng chỉ hiện các shop được giao!
   </p>
 
   <div class="members-layout">
     <div class="member-form-box">
-      <h3 id="memberFormTitle">+ Tạo thành viên mới</h3>
-      <label>Tên thành viên *</label>
+      <h3 id="memberFormTitle">+ Tạo tài khoản thành viên</h3>
+      <label>Họ tên thành viên *</label>
       <input type="text" id="mName" placeholder="VD: Nguyễn Văn A">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <label>Tài khoản đăng nhập *</label>
+          <input type="text" id="mUsername" placeholder="VD: nhanvien1">
+        </div>
+        <div>
+          <label>Mật khẩu *</label>
+          <input type="text" id="mPassword" placeholder="VD: 123456">
+        </div>
+      </div>
 
       <div style="display:grid;grid-template-columns:1fr 70px;gap:8px;">
         <div>
@@ -732,8 +911,11 @@
     </div>
 
     <div>
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#cfd3d8;">
-        Danh sách thành viên (<span id="membersTotalCount">0</span>)
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:600;color:#cfd3d8;">
+          Danh sách tài khoản thành viên (<span id="membersTotalCount">0</span>)
+        </div>
+        <button class="btn small" id="openLoginFromModalBtn" style="color:#79c0ff;">🔐 Mở màn hình Đăng nhập</button>
       </div>
       <div class="members-list-box" id="membersListBox"></div>
     </div>

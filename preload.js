@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('api', {
   saveShops: (shops) => ipcRenderer.invoke('shops:save', shops),
   getMembers: () => ipcRenderer.invoke('members:get'),
   saveMembers: (members) => ipcRenderer.invoke('members:save', members),
+  getAuthConfig: () => ipcRenderer.invoke('auth:get'),
+  saveAuthConfig: (cfg) => ipcRenderer.invoke('auth:save', cfg),
   openShop: (id, which) => ipcRenderer.invoke('shop:open', id, which),
   closeShop: (id) => ipcRenderer.invoke('shop:close', id),
   closeAllShops: () => ipcRenderer.invoke('shops:closeAll'),

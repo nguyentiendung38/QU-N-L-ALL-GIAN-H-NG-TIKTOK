@@ -102,48 +102,82 @@ ipcMain.handle('members:save', (_e, members) => {
   return true;
 });
 
-// Xuat danh sach gian hang cua 1 thanh vien ra file JSON de gui cho nhan vien do
+ipcMain.handle('auth:get', () => {
+  const s = readJson(settingsFile(), {});
+  return {
+    adminUser: s.adminUser || 'admin',
+    adminPass: s.adminPass || '123456',
+    requireLogin: Boolean(s.requireLogin)
+  };
+});
+
+ipcMain.handle('auth:save', (_e, cfg) => {
+  const s = readJson(settingsFile(), {});
+  if (cfg && typeof cfg === 'object') {
+    if (cfg.adminUser) s.adminUser = String(cfg.adminUser).trim();
+    if (cfg.adminPass) s.adminPass = String(cfg.adminPass).trim();
+    if (typeof cfg.requireLogin === 'boolean') s.requireLogin = cfg.requireLogin;
+  }
+  writeJson(settingsFile(), s);
+  return true;
+});
+
+// Xuat danh sach gian hang + tai khoan cua 1 thanh vien ra file JSON de gui cho nhan vien do
 ipcMain.handle('shops:exportMember', async (_e, payload) => {
-  const memberName = payload && payload.memberName ? String(payload.memberName).trim() : 'member';
+  const member = payload && payload.member ? payload.member : null;
+  const memberName = (member && member.name) || (payload && payload.memberName) || 'member';
   const memberShops = payload && Array.isArray(payload.shops) ? payload.shops : [];
-  const safeName = memberName.replace(/[^a-zA-Z0-9_-]/g, '-') || 'member';
+  const safeName = String(memberName).trim().replace(/[^a-zA-Z0-9_-]/g, '-') || 'member';
   const dateStr = new Date().toISOString().slice(0, 10);
   const r = await dialog.showSaveDialog({
-    title: `Xuất danh sách gian hàng cho thành viên: ${memberName}`,
-    defaultPath: `tiktok-shops-${safeName}-${dateStr}.json`,
+    title: `Xuất gói phân quyền gian hàng cho nhân viên: ${memberName}`,
+    defaultPath: `tiktok-phanquyen-${safeName}-${dateStr}.json`,
     filters: [{ name: 'JSON Files', extensions: ['json'] }]
   });
   if (r.canceled || !r.filePath) return { ok: false, canceled: true };
   try {
-    fs.writeFileSync(r.filePath, JSON.stringify(memberShops, null, 2), 'utf8');
+    const pkg = {
+      version: 2,
+      type: 'member_package',
+      member,
+      shops: memberShops
+    };
+    fs.writeFileSync(r.filePath, JSON.stringify(pkg, null, 2), 'utf8');
     return { ok: true, count: memberShops.length, filePath: r.filePath };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 });
 
-// Xuat danh sach gian hang ra file JSON (Backup)
+// Xuat danh sach gian hang + thanh vien ra file JSON (Backup)
 ipcMain.handle('shops:export', async () => {
   const shops = readShops();
+  const members = readMembers();
   const dateStr = new Date().toISOString().slice(0, 10);
   const r = await dialog.showSaveDialog({
-    title: 'Xuất danh sách gian hàng (Backup)',
+    title: 'Xuất dữ liệu hệ thống (Gian hàng + Thành viên)',
     defaultPath: `tiktok-shops-backup-${dateStr}.json`,
     filters: [{ name: 'JSON Files', extensions: ['json'] }]
   });
   if (r.canceled || !r.filePath) return { ok: false, canceled: true };
   try {
-    fs.writeFileSync(r.filePath, JSON.stringify(shops, null, 2), 'utf8');
+    const pkg = {
+      version: 2,
+      type: 'full_backup',
+      shops,
+      members
+    };
+    fs.writeFileSync(r.filePath, JSON.stringify(pkg, null, 2), 'utf8');
     return { ok: true, count: shops.length, filePath: r.filePath };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 });
 
-// Nhap danh sach gian hang tu file JSON (Restore / Merge)
+// Nhap danh sach gian hang & thanh vien tu file JSON (Restore / Merge / Nhan vien nhap file phan quyen)
 ipcMain.handle('shops:import', async () => {
   const r = await dialog.showOpenDialog({
-    title: 'Nhập danh sách gian hàng từ file JSON',
+    title: 'Nhập dữ liệu gian hàng / Gói phân quyền nhân viên (.json)',
     properties: ['openFile'],
     filters: [{ name: 'JSON Files', extensions: ['json'] }]
   });
@@ -180,7 +214,37 @@ ipcMain.handle('shops:import', async () => {
       }
     }
     writeJson(shopsFile(), current);
-    return { ok: true, shops: current, added, updated };
+
+    // Neu file co kem thong tin thanh vien (full_backup hoac member_package)
+    const currentMembers = readMembers();
+    const incomingMembers = [];
+    if (raw && Array.isArray(raw.members)) {
+      incomingMembers.push(...raw.members);
+    }
+    if (raw && raw.member && typeof raw.member === 'object' && raw.member.id) {
+      incomingMembers.push(raw.member);
+    }
+    for (const m of incomingMembers) {
+      if (!m || !m.id || !m.name) continue;
+      const mIdx = currentMembers.findIndex((x) => x.id === m.id);
+      if (mIdx >= 0) {
+        currentMembers[mIdx] = { ...currentMembers[mIdx], ...m };
+      } else {
+        currentMembers.push(m);
+      }
+    }
+    if (incomingMembers.length > 0) {
+      writeJson(membersFile(), currentMembers);
+    }
+
+    return {
+      ok: true,
+      shops: current,
+      members: currentMembers,
+      importedMember: (raw && raw.member) || null,
+      added,
+      updated
+    };
   } catch (e) {
     return { ok: false, error: 'Không đọc được file: ' + e.message };
   }

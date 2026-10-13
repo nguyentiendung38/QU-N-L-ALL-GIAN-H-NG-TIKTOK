@@ -4,6 +4,8 @@ const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=a
 
 let shops = [];
 let members = [];
+let authConfig = { adminUser: 'admin', adminPass: '123456', requireLogin: false };
+let currentUser = { roleType: 'admin', member: null, isAdminPreview: false };
 let runningIds = new Set();
 let selectedIds = new Set();
 let proxyStatusMap = new Map();
@@ -38,6 +40,16 @@ function initials(name) {
   return (name || '').trim().slice(0, 2).toUpperCase() || 'SH';
 }
 
+function slugUsername(str) {
+  return String(str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 function mkBtn(text, cls, onclick, title) {
   const b = document.createElement('button');
   b.className = 'btn ' + cls;
@@ -45,6 +57,10 @@ function mkBtn(text, cls, onclick, title) {
   if (title) b.title = title;
   b.onclick = onclick;
   return b;
+}
+
+function isMemberMode() {
+  return currentUser && currentUser.roleType === 'member' && currentUser.member;
 }
 
 function getShopMembers(shop) {
@@ -56,6 +72,169 @@ function getShopMembers(shop) {
 function getMemberShops(memberId) {
   return shops.filter((s) => Array.isArray(s.memberIds) && s.memberIds.includes(memberId));
 }
+
+function getVisibleShopsForRole() {
+  if (isMemberMode()) {
+    return getMemberShops(currentUser.member.id);
+  }
+  return shops;
+}
+
+function applyRoleUI() {
+  const badge = $('currentUserBadge');
+  const isMem = isMemberMode();
+
+  if (isMem) {
+    const m = currentUser.member;
+    badge.className = 'user-role-badge member';
+    badge.textContent = `👤 Nhân viên: ${m.name}${m.role ? ' (' + m.role + ')' : ''}`;
+    activeMember = m.id;
+  } else {
+    badge.className = 'user-role-badge admin';
+    badge.textContent = `👑 Quản trị viên (${authConfig.adminUser || 'admin'})`;
+  }
+
+  $('membersBtn').classList.toggle('hidden', isMem);
+  $('exportBtn').classList.toggle('hidden', isMem);
+  $('addBtn').classList.toggle('hidden', isMem);
+  $('memberFilterSelect').classList.toggle('hidden', isMem);
+  $('backToAdminBtn').classList.toggle('hidden', !(isMem && currentUser.isAdminPreview));
+  $('importBtn').textContent = isMem ? '📥 Nạp shop từ Admin' : '⬆ Nhập Backup';
+}
+
+// ---- MAN HINH DANG NHAP (ADMIN & NHAN VIEN) ----
+function renderLoginQuickAccounts() {
+  const wrap = $('loginQuickWrap');
+  const pills = $('loginQuickPills');
+  if (!wrap || !pills) return;
+  pills.innerHTML = '';
+
+  const adminPill = document.createElement('span');
+  adminPill.className = 'login-quick-pill';
+  adminPill.innerHTML = `👑 Admin (<b>${authConfig.adminUser || 'admin'}</b>)`;
+  adminPill.onclick = () => {
+    $('loginUser').value = authConfig.adminUser || 'admin';
+    $('loginPass').value = '';
+    $('loginPass').focus();
+  };
+  pills.appendChild(adminPill);
+
+  members.forEach((m) => {
+    const uname = m.username || slugUsername(m.name) || m.name;
+    const p = document.createElement('span');
+    p.className = 'login-quick-pill';
+    const dot = document.createElement('span');
+    dot.className = 'member-dot';
+    dot.style.background = m.color || '#388bfd';
+    const txt = document.createElement('span');
+    txt.innerHTML = `${m.name} (<b>${uname}</b>)`;
+    p.append(dot, txt);
+    p.onclick = () => {
+      $('loginUser').value = uname;
+      $('loginPass').value = '';
+      $('loginPass').focus();
+    };
+    pills.appendChild(p);
+  });
+
+  $('loginDefaultHint').textContent =
+    (authConfig.adminPass || '123456') === '123456'
+      ? `TK Admin mặc định: ${authConfig.adminUser || 'admin'} / 123456`
+      : `TK Admin: ${authConfig.adminUser || 'admin'}`;
+}
+
+function showLoginScreen() {
+  if ($('membersDlg').open) $('membersDlg').close();
+  if ($('dlg').open) $('dlg').close();
+  if ($('settingsDlg').open) $('settingsDlg').close();
+
+  $('loginError').classList.add('hidden');
+  $('loginPass').value = '';
+  renderLoginQuickAccounts();
+  $('loginOverlay').classList.remove('hidden');
+  setTimeout(() => $('loginUser').focus(), 50);
+}
+
+function doLogin() {
+  const u = $('loginUser').value.trim();
+  const p = $('loginPass').value.trim();
+  const errBox = $('loginError');
+
+  if (!u || !p) {
+    errBox.textContent = '⚠️ Vui lòng nhập đầy đủ Tài khoản và Mật khẩu!';
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  // Kiem tra tai khoan Admin
+  const adminU = (authConfig.adminUser || 'admin').toLowerCase();
+  const adminP = authConfig.adminPass || '123456';
+  if (u.toLowerCase() === adminU && p === adminP) {
+    currentUser = { roleType: 'admin', member: null, isAdminPreview: false };
+    activeMember = 'ALL';
+    $('loginOverlay').classList.add('hidden');
+    render();
+    toast('👑 Đã đăng nhập quyền Quản trị viên (Admin)!');
+    return;
+  }
+
+  // Kiem tra tai khoan Thanh vien (Nhan vien)
+  const foundMember = members.find((m) => {
+    const mUser = (m.username || slugUsername(m.name) || '').toLowerCase();
+    const mName = (m.name || '').trim().toLowerCase();
+    const mPass = m.password || '123456';
+    return (u.toLowerCase() === mUser || u.toLowerCase() === mName) && p === mPass;
+  });
+
+  if (foundMember) {
+    currentUser = { roleType: 'member', member: foundMember, isAdminPreview: false };
+    activeMember = foundMember.id;
+    activeGroup = '__ALL__';
+    $('loginOverlay').classList.add('hidden');
+    render();
+    const assignedCount = getMemberShops(foundMember.id).length;
+    toast(`👤 Xin chào ${foundMember.name}! Bạn đang quản lý ${assignedCount} gian hàng.`);
+    return;
+  }
+
+  errBox.textContent = '❌ Sai tài khoản hoặc mật khẩu! Vui lòng kiểm tra lại.';
+  errBox.classList.remove('hidden');
+}
+
+$('loginSubmitBtn').onclick = doLogin;
+$('loginUser').onkeydown = (e) => {
+  if (e.key === 'Enter') $('loginPass').focus();
+};
+$('loginPass').onkeydown = (e) => {
+  if (e.key === 'Enter') doLogin();
+};
+
+$('switchAccountBtn').onclick = () => showLoginScreen();
+$('backToAdminBtn').onclick = () => {
+  currentUser = { roleType: 'admin', member: null, isAdminPreview: false };
+  activeMember = 'ALL';
+  render();
+  toast('👑 Đã quay lại giao diện Quản trị viên (Admin)');
+};
+
+$('loginImportPkgBtn').onclick = async () => {
+  const r = await window.api.importShops();
+  if (r && r.ok) {
+    shops = r.shops || (await window.api.getShops());
+    members = r.members || (await window.api.getMembers()) || [];
+    renderLoginQuickAccounts();
+    if (r.importedMember && r.importedMember.id) {
+      const m = r.importedMember;
+      $('loginUser').value = m.username || slugUsername(m.name) || m.name;
+      $('loginPass').focus();
+      toast(`Đã nạp gói phân quyền của nhân viên ${m.name} (${r.added + r.updated} gian)! Hãy nhập mật khẩu để đăng nhập.`);
+    } else {
+      toast(`Đã nạp dữ liệu thành công (${shops.length} gian, ${members.length} thành viên)!`);
+    }
+  } else if (r && !r.canceled) {
+    toast('Lỗi nạp file: ' + (r.error || 'không rõ'));
+  }
+};
 
 function formatProxyBadge(proxy) {
   if (!proxy || !String(proxy).trim()) return '';
@@ -101,16 +280,20 @@ async function checkShopProxy(s, silent = false) {
 
 function getFilteredShops() {
   const q = searchQuery.trim().toLowerCase();
-  return shops.filter((s) => {
+  const baseShops = getVisibleShopsForRole();
+
+  return baseShops.filter((s) => {
     if (activeGroup === '__RUNNING__' && !runningIds.has(s.id)) return false;
     if (activeGroup !== '__ALL__' && activeGroup !== '__RUNNING__') {
       if ((s.group || '').trim() !== activeGroup) return false;
     }
     const shopMembers = getShopMembers(s);
-    if (activeMember === '__UNASSIGNED__') {
-      if (shopMembers.length > 0) return false;
-    } else if (activeMember !== 'ALL') {
-      if (!shopMembers.some((m) => m.id === activeMember)) return false;
+    if (!isMemberMode()) {
+      if (activeMember === '__UNASSIGNED__') {
+        if (shopMembers.length > 0) return false;
+      } else if (activeMember !== 'ALL') {
+        if (!shopMembers.some((m) => m.id === activeMember)) return false;
+      }
     }
     if (!q) return true;
     const memberNames = shopMembers.map((m) => `${m.name} ${m.role || ''}`).join(' ');
@@ -124,7 +307,7 @@ function renderMemberFilter() {
   if (!sel) return;
 
   const validMemberIds = new Set(members.map((m) => m.id));
-  if (activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__' && !validMemberIds.has(activeMember)) {
+  if (!isMemberMode() && activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__' && !validMemberIds.has(activeMember)) {
     activeMember = 'ALL';
   }
 
@@ -166,16 +349,19 @@ function renderGroupTabs() {
   const wrap = $('groupTabs');
   wrap.innerHTML = '';
 
+  const roleShops = getVisibleShopsForRole();
   const groups = Array.from(
-    new Set(shops.map((s) => (s.group || '').trim()).filter(Boolean))
+    new Set(roleShops.map((s) => (s.group || '').trim()).filter(Boolean))
   );
 
+  const runningInRole = roleShops.filter((s) => runningIds.has(s.id)).length;
+
   const items = [
-    { key: '__ALL__', label: `Tất cả (${shops.length})` },
-    { key: '__RUNNING__', label: `🟢 Đang mở (${runningIds.size})` },
+    { key: '__ALL__', label: `Tất cả (${roleShops.length})` },
+    { key: '__RUNNING__', label: `🟢 Đang mở (${runningInRole})` },
     ...groups.map((g) => ({
       key: g,
-      label: `📁 ${g} (${shops.filter((s) => (s.group || '').trim() === g).length})`
+      label: `📁 ${g} (${roleShops.filter((s) => (s.group || '').trim() === g).length})`
     }))
   ];
 
@@ -210,10 +396,13 @@ function renderGroupTabs() {
 }
 
 function updateStatsAndBatchBar(filtered) {
-  $('statsBadge').innerHTML =
-    `Tổng: <b>${shops.length}</b> gian • <span class="open-count">🟢 ${runningIds.size} đang mở</span>`;
+  const roleShops = getVisibleShopsForRole();
+  const runningInRole = roleShops.filter((s) => runningIds.has(s.id)).length;
 
-  const validIds = new Set(shops.map((s) => s.id));
+  $('statsBadge').innerHTML =
+    `${isMemberMode() ? 'Được giao' : 'Tổng'}: <b>${roleShops.length}</b> gian • <span class="open-count">🟢 ${runningInRole} đang mở</span>`;
+
+  const validIds = new Set(roleShops.map((s) => s.id));
   for (const id of Array.from(selectedIds)) {
     if (!validIds.has(id)) selectedIds.delete(id);
   }
@@ -239,6 +428,7 @@ function updateStatsAndBatchBar(filtered) {
 }
 
 function render() {
+  applyRoleUI();
   renderMemberFilter();
   renderGroupTabs();
   const filtered = getFilteredShops();
@@ -246,7 +436,15 @@ function render() {
 
   const grid = $('grid');
   grid.innerHTML = '';
-  $('empty').classList.toggle('hidden', filtered.length > 0);
+  const emptyEl = $('empty');
+  if (filtered.length === 0) {
+    emptyEl.classList.remove('hidden');
+    emptyEl.innerHTML = isMemberMode()
+      ? `Tài khoản <b>${currentUser.member.name}</b> hiện chưa được Quản trị viên phân công gian hàng nào.<br>Hãy nhờ Admin tích chọn giao shop trong mục <b>👥 Thành viên</b>.`
+      : 'Chưa có gian nào phù hợp.<br>Bấm “+ Thêm gian hàng” để bắt đầu.';
+  } else {
+    emptyEl.classList.add('hidden');
+  }
 
   filtered.forEach((s) => {
     const realIndex = shops.findIndex((x) => x.id === s.id);
@@ -301,20 +499,22 @@ function render() {
       assignedMembers.forEach((m) => {
         const mb = document.createElement('span');
         mb.className = 'badge member-badge';
-        mb.title = `Phụ trách: ${m.name}${m.role ? ' (' + m.role + ')' : ''}. Bấm để lọc các gian của ${m.name}`;
+        mb.title = `Phụ trách: ${m.name}${m.role ? ' (' + m.role + ')' : ''}`;
         const dot = document.createElement('span');
         dot.className = 'member-dot';
         dot.style.background = m.color || '#388bfd';
         const txt = document.createElement('span');
         txt.textContent = m.name;
         mb.append(dot, txt);
-        mb.onclick = () => {
-          activeMember = activeMember === m.id ? 'ALL' : m.id;
-          render();
-        };
+        if (!isMemberMode()) {
+          mb.onclick = () => {
+            activeMember = activeMember === m.id ? 'ALL' : m.id;
+            render();
+          };
+        }
         metaRow.appendChild(mb);
       });
-    } else if (members.length > 0) {
+    } else if (members.length > 0 && !isMemberMode()) {
       const unassignedBadge = document.createElement('span');
       unassignedBadge.className = 'badge member-unassigned';
       unassignedBadge.textContent = '👤 + Giao TV';
@@ -384,20 +584,6 @@ function render() {
       actions.append(closeBtn);
     }
 
-    const tools = document.createElement('div');
-    tools.className = 'tools';
-    const up = mkBtn('◀', 'small', () => moveShop(realIndex, -1), 'Dời lên trước');
-    const down = mkBtn('▶', 'small', () => moveShop(realIndex, 1), 'Dời ra sau');
-    up.disabled = realIndex === 0;
-    down.disabled = realIndex === shops.length - 1;
-    tools.append(
-      up,
-      down,
-      mkBtn('Sửa', 'small', () => openDialog(s, false)),
-      mkBtn('Xóa đăng nhập', 'small danger', () => resetLogin(s), 'Xóa phiên đăng nhập đã lưu của gian này'),
-      mkBtn('Xóa gian', 'small danger', () => deleteShop(s))
-    );
-
     card.append(bar, head);
     if (metaRow.childNodes.length > 0) card.appendChild(metaRow);
     if (s.note && s.note.trim()) {
@@ -407,7 +593,25 @@ function render() {
       noteDiv.title = s.note.trim();
       card.appendChild(noteDiv);
     }
-    card.append(actions, tools);
+    card.append(actions);
+
+    if (!isMemberMode()) {
+      const tools = document.createElement('div');
+      tools.className = 'tools';
+      const up = mkBtn('◀', 'small', () => moveShop(realIndex, -1), 'Dời lên trước');
+      const down = mkBtn('▶', 'small', () => moveShop(realIndex, 1), 'Dời ra sau');
+      up.disabled = realIndex === 0;
+      down.disabled = realIndex === shops.length - 1;
+      tools.append(
+        up,
+        down,
+        mkBtn('Sửa', 'small', () => openDialog(s, false)),
+        mkBtn('Xóa đăng nhập', 'small danger', () => resetLogin(s), 'Xóa phiên đăng nhập đã lưu của gian này'),
+        mkBtn('Xóa gian', 'small danger', () => deleteShop(s))
+      );
+      card.appendChild(tools);
+    }
+
     grid.appendChild(card);
   });
 }
@@ -459,7 +663,8 @@ async function closeSingleShop(s) {
 
 // ---- Check tat ca Proxy ----
 $('checkAllProxyBtn').onclick = async () => {
-  const withProxy = shops.filter((s) => s.proxy && String(s.proxy).trim());
+  const roleShops = getVisibleShopsForRole();
+  const withProxy = roleShops.filter((s) => s.proxy && String(s.proxy).trim());
   if (!withProxy.length) {
     toast('Chưa có gian hàng nào gắn Proxy riêng để kiểm tra.');
     return;
@@ -520,7 +725,7 @@ $('selectAllChk').onchange = (e) => {
 };
 
 $('openSelectedBtn').onclick = async () => {
-  const list = shops.filter((s) => selectedIds.has(s.id));
+  const list = getVisibleShopsForRole().filter((s) => selectedIds.has(s.id));
   if (!list.length) return;
   toast(`Đang mở lần lượt ${list.length} gian hàng...`);
   for (let i = 0; i < list.length; i++) {
@@ -549,7 +754,7 @@ $('closeAllBtn').onclick = async () => {
 $('exportBtn').onclick = async () => {
   const r = await window.api.exportShops();
   if (r && r.ok) {
-    toast(`Đã xuất ${r.count} gian hàng ra file Backup!`);
+    toast(`Đã xuất ${r.count} gian hàng + danh sách thành viên ra file Backup!`);
   } else if (r && !r.canceled) {
     toast('Lỗi xuất file: ' + (r.error || 'không rõ'));
   }
@@ -559,6 +764,14 @@ $('importBtn').onclick = async () => {
   const r = await window.api.importShops();
   if (r && r.ok) {
     shops = r.shops || (await window.api.getShops());
+    members = r.members || (await window.api.getMembers()) || [];
+    if (r.importedMember && r.importedMember.id) {
+      currentUser = { roleType: 'member', member: r.importedMember, isAdminPreview: false };
+      activeMember = r.importedMember.id;
+      render();
+      toast(`Đã nạp gói phân quyền của nhân viên ${r.importedMember.name}!`);
+      return;
+    }
     render();
     toast(`Đã nhập thành công (Thêm mới: ${r.added}, Cập nhật: ${r.updated})!`);
   } else if (r && !r.canceled) {
@@ -753,10 +966,23 @@ function renderMemberShopsChecklist(assignedShopIds = []) {
   updateSelectedShopCountInMemberModal();
 }
 
+let usernameManuallyEdited = false;
+$('mUsername').oninput = () => {
+  usernameManuallyEdited = Boolean($('mUsername').value.trim());
+};
+$('mName').oninput = () => {
+  if (!editingMemberId && !usernameManuallyEdited) {
+    $('mUsername').value = slugUsername($('mName').value);
+  }
+};
+
 function resetMemberForm() {
   editingMemberId = null;
-  $('memberFormTitle').textContent = '+ Tạo thành viên mới';
+  usernameManuallyEdited = false;
+  $('memberFormTitle').textContent = '+ Tạo tài khoản thành viên';
   $('mName').value = '';
+  $('mUsername').value = '';
+  $('mPassword').value = '123456';
   $('mRole').value = '';
   $('mPhone').value = '';
   $('mColor').value = randomMemberColor();
@@ -767,8 +993,11 @@ function resetMemberForm() {
 
 function startEditMember(m) {
   editingMemberId = m.id;
+  usernameManuallyEdited = true;
   $('memberFormTitle').textContent = '✏️ Sửa & Chia shop: ' + m.name;
   $('mName').value = m.name || '';
+  $('mUsername').value = m.username || slugUsername(m.name) || '';
+  $('mPassword').value = m.password || '123456';
   $('mRole').value = m.role || '';
   $('mPhone').value = m.phone || '';
   $('mColor').value = m.color || '#388bfd';
@@ -781,19 +1010,23 @@ function startEditMember(m) {
 
 function renderMembersListModal() {
   $('membersTotalCount').textContent = String(members.length);
+  $('requireLoginChk').checked = Boolean(authConfig.requireLogin);
   const box = $('membersListBox');
   box.innerHTML = '';
 
   if (!members.length) {
     box.innerHTML =
       '<div style="text-align:center;color:var(--muted);padding:40px 16px;font-size:13px;border:1px dashed var(--line);border-radius:10px;">' +
-      'Chưa có thành viên nào.<br>Hãy nhập tên ở khung bên trái và tích chọn các gian hàng để tạo thành viên đầu tiên.' +
+      'Chưa có thành viên nào.<br>Hãy nhập Họ tên, Tài khoản, Mật khẩu ở khung bên trái và tích chọn các gian hàng để tạo tài khoản cho nhân viên.' +
       '</div>';
     return;
   }
 
   members.forEach((m) => {
     const mShops = getMemberShops(m.id);
+    const uname = m.username || slugUsername(m.name) || m.name;
+    const upass = m.password || '123456';
+
     const card = document.createElement('div');
     card.className = 'member-card';
 
@@ -821,9 +1054,14 @@ function renderMembersListModal() {
       nameRow.appendChild(roleSpan);
     }
 
+    const credSpan = document.createElement('span');
+    credSpan.className = 'cred-badge';
+    credSpan.textContent = `🔑 TK: ${uname} | MK: ${upass}`;
+    nameRow.appendChild(credSpan);
+
     const sub = document.createElement('div');
     sub.className = 'member-sub';
-    sub.textContent = `Đang quản lý: ${mShops.length} gian hàng` + (m.phone ? ` • 📞 ${m.phone}` : '');
+    sub.textContent = `Đang được phân công: ${mShops.length} gian hàng` + (m.phone ? ` • 📞 ${m.phone}` : '');
 
     info.append(nameRow, sub);
     head.append(av, info);
@@ -849,16 +1087,18 @@ function renderMembersListModal() {
     const actions = document.createElement('div');
     actions.className = 'member-actions';
 
-    const filterBtn = mkBtn(
-      `🔍 Lọc xem (${mShops.length})`,
-      'small',
+    const viewAsMemberBtn = mkBtn(
+      `👁️ Vào giao diện NV (${mShops.length})`,
+      'small primary',
       () => {
+        currentUser = { roleType: 'member', member: m, isAdminPreview: true };
         activeMember = m.id;
+        activeGroup = '__ALL__';
         $('membersDlg').close();
         render();
-        toast(`Đang hiển thị ${mShops.length} gian hàng của ${m.name}`);
+        toast(`👤 Đang xem giao diện của nhân viên ${m.name} (${mShops.length} gian). Bấm "👑 Về lại Admin" ở góc trên để quay lại.`);
       },
-      'Chỉ hiển thị các gian hàng của thành viên này ngoài màn hình chính'
+      'Chuyển sang đúng màn hình làm việc của nhân viên này (chỉ thấy các shop được giao)'
     );
 
     const openAllMemberBtn = mkBtn(
@@ -883,23 +1123,24 @@ function renderMembersListModal() {
     openAllMemberBtn.disabled = mShops.length === 0;
 
     const exportMemberBtn = mkBtn(
-      '📤 Xuất file giao việc',
+      '📤 Xuất file cho NV',
       'small',
       async () => {
         if (!mShops.length) {
           return toast(`Hãy giao ít nhất 1 gian hàng cho ${m.name} trước khi xuất file!`);
         }
         const r = await window.api.exportMemberShops({
+          member: { ...m, username: uname, password: upass },
           memberName: m.name,
           shops: mShops
         });
         if (r && r.ok) {
-          toast(`Đã xuất ${r.count} gian của ${m.name} ra file JSON!`);
+          toast(`Đã xuất gói phân quyền (${r.count} gian + tài khoản ${uname}) cho ${m.name}!`);
         } else if (r && !r.canceled) {
           toast('Lỗi xuất file: ' + (r.error || 'không rõ'));
         }
       },
-      'Xuất file .json chỉ gồm các gian của thành viên này để gửi cho máy nhân viên nhập vào'
+      'Xuất file .json chứa tài khoản + các gian được giao của nhân viên này để gửi qua máy nhân viên nạp vào'
     );
 
     const editBtn = mkBtn('✏️ Sửa / Chia shop', 'small', () => startEditMember(m));
@@ -920,7 +1161,7 @@ function renderMembersListModal() {
       toast(`Đã xóa thành viên ${m.name}`);
     });
 
-    actions.append(filterBtn, openAllMemberBtn, exportMemberBtn, editBtn, delBtn);
+    actions.append(viewAsMemberBtn, openAllMemberBtn, exportMemberBtn, editBtn, delBtn);
     card.appendChild(actions);
     box.appendChild(card);
   });
@@ -935,6 +1176,29 @@ function openMembersDialog() {
 $('membersBtn').onclick = () => openMembersDialog();
 $('closeMembersDlgBtn').onclick = () => $('membersDlg').close();
 $('mCancelEditBtn').onclick = () => resetMemberForm();
+$('openLoginFromModalBtn').onclick = () => showLoginScreen();
+
+$('requireLoginChk').onchange = async (e) => {
+  authConfig.requireLogin = Boolean(e.target.checked);
+  await window.api.saveAuthConfig(authConfig);
+  toast(
+    authConfig.requireLogin
+      ? '🔒 Đã BẬT bắt buộc đăng nhập mỗi khi mở phần mềm!'
+      : '🔓 Đã TẮT bắt buộc đăng nhập khi mở phần mềm.'
+  );
+};
+
+$('changeAdminPassBtn').onclick = async () => {
+  const newU = prompt('Nhập tên tài khoản Quản trị viên (Admin):', authConfig.adminUser || 'admin');
+  if (!newU || !newU.trim()) return;
+  const newP = prompt('Nhập mật khẩu mới cho Quản trị viên (Admin):', authConfig.adminPass || '123456');
+  if (!newP || !newP.trim()) return;
+  authConfig.adminUser = newU.trim();
+  authConfig.adminPass = newP.trim();
+  await window.api.saveAuthConfig(authConfig);
+  render();
+  toast(`🔑 Đã cập nhật tài khoản Admin: ${authConfig.adminUser}`);
+};
 
 $('mSelectAllShopsBtn').onclick = () => {
   $('mShopsChecklist').querySelectorAll('input[type="checkbox"]').forEach((c) => {
@@ -954,6 +1218,8 @@ $('mSaveBtn').onclick = async () => {
   const name = $('mName').value.trim();
   if (!name) return $('mName').focus();
 
+  const username = ($('mUsername').value.trim() || slugUsername(name) || 'nv' + (members.length + 1)).toLowerCase();
+  const password = $('mPassword').value.trim() || '123456';
   const role = $('mRole').value.trim();
   const phone = $('mPhone').value.trim();
   const color = $('mColor').value || '#388bfd';
@@ -965,11 +1231,11 @@ $('mSaveBtn').onclick = async () => {
   if (memberId) {
     const target = members.find((x) => x.id === memberId);
     if (target) {
-      Object.assign(target, { name, role, phone, color });
+      Object.assign(target, { name, username, password, role, phone, color });
     }
   } else {
     memberId = 'mem_' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
-    members.push({ id: memberId, name, role, phone, color });
+    members.push({ id: memberId, name, username, password, role, phone, color });
   }
 
   // Cap nhat danh sach shop duoc giao cho thanh vien nay
@@ -989,7 +1255,11 @@ $('mSaveBtn').onclick = async () => {
   resetMemberForm();
   renderMembersListModal();
   render();
-  toast(wasEdit ? `Đã cập nhật thành viên ${name} (${checkedShopIds.size} gian)!` : `Đã tạo thành viên ${name} và giao ${checkedShopIds.size} gian!`);
+  toast(
+    wasEdit
+      ? `Đã cập nhật TK "${username}" của ${name} (${checkedShopIds.size} gian)!`
+      : `Đã tạo TK "${username}" (MK: ${password}) cho ${name} và giao ${checkedShopIds.size} gian!`
+  );
 };
 
 // ---- Xoa dang nhap / xoa gian ----
@@ -1041,6 +1311,7 @@ $('pickBrowserBtn').onclick = async () => {
 (async function init() {
   shops = await window.api.getShops();
   members = (await window.api.getMembers()) || [];
+  authConfig = (await window.api.getAuthConfig()) || { adminUser: 'admin', adminPass: '123456', requireLogin: false };
   const active = await window.api.getRunningShops();
   runningIds = new Set(active || []);
   window.api.onRunningChanged((ids) => {
@@ -1049,4 +1320,7 @@ $('pickBrowserBtn').onclick = async () => {
   });
   render();
   refreshBrowser();
+  if (authConfig.requireLogin) {
+    showLoginScreen();
+  }
 })();
