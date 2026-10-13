@@ -576,6 +576,25 @@ ipcMain.handle('auth:save', async (_e, cfg) => {
   return true;
 });
 
+ipcMain.handle('auth:getSavedLogin', () => {
+  const s = readJson(settingsFile(), {});
+  return s.savedLogin || null;
+});
+
+ipcMain.handle('auth:saveLogin', (_e, creds) => {
+  const s = readJson(settingsFile(), {});
+  s.savedLogin = creds && creds.user ? { user: String(creds.user).trim(), pass: String(creds.pass || '') } : null;
+  writeJson(settingsFile(), s);
+  return true;
+});
+
+ipcMain.handle('auth:clearSavedLogin', () => {
+  const s = readJson(settingsFile(), {});
+  delete s.savedLogin;
+  writeJson(settingsFile(), s);
+  return true;
+});
+
 ipcMain.handle('cloud:push', () => pushToCloudNow());
 ipcMain.handle('cloud:pull', (_e, force) => pullFromCloud(Boolean(force)));
 

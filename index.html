@@ -570,36 +570,191 @@
     font-size: 12.5px;
     margin-bottom: 10px;
   }
-  .login-quick-accounts {
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid #262c36;
-  }
-  .login-quick-title {
-    font-size: 11.5px;
-    color: var(--muted);
-    margin-bottom: 8px;
-  }
-  .login-quick-pills {
+  .remember-login-wrap {
+    margin-top: 10px;
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    align-items: center;
+    gap: 8px;
   }
-  .login-quick-pill {
-    font-size: 12px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: #21262d;
-    border: 1px solid #30363d;
-    color: #c9d1d9;
-    cursor: pointer;
+  .remember-login-label {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 7px;
+    font-size: 12.5px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    margin: 0;
   }
-  .login-quick-pill:hover {
-    border-color: var(--teal);
+  .remember-login-label input {
+    accent-color: var(--teal);
+    cursor: pointer;
+    width: 15px;
+    height: 15px;
+    margin: 0;
+  }
+
+  /* Dropdown danh sach thanh vien tren the shop khi >= 2 nguoi */
+  .badge.member-select-dropdown {
+    background: #1c2128;
+    border: 1px solid #388bfd;
+    color: #79c0ff;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    font-family: inherit;
+    max-width: 200px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+  }
+  .badge.member-select-dropdown:hover {
+    background: #242c38;
+    border-color: #58a6ff;
+  }
+  .badge.member-select-dropdown option {
+    background: #161b22;
+    color: var(--text);
+  }
+
+  /* Avatar Quan tri vien & Menu he thong tren Header */
+  .user-menu-wrap {
+    position: relative;
+    display: inline-block;
+  }
+  .user-avatar-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #1c2128;
+    border: 1px solid var(--line);
+    padding: 3px 10px 3px 4px;
+    border-radius: 999px;
+    cursor: pointer;
+    color: var(--text);
+    transition: all .15s ease;
+  }
+  .user-avatar-btn:hover {
+    background: #262c36;
+    border-color: #444c56;
+  }
+  .user-avatar-circle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0f9d94, #2ea043);
     color: #fff;
+    font-weight: 700;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 6px rgba(15,157,148,.4);
+    flex: none;
+  }
+  .user-avatar-info {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    line-height: 1.15;
+  }
+  .user-avatar-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .user-avatar-role {
+    font-size: 10px;
+    color: var(--teal);
+    font-weight: 600;
+  }
+  .user-avatar-arrow {
+    font-size: 11px;
+    color: var(--muted);
+    transition: transform .15s ease;
+  }
+  .user-menu-wrap.open .user-avatar-arrow {
+    transform: rotate(180deg);
+  }
+  .user-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 250px;
+    background: #1c2128;
+    border: 1px solid #38414e;
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.6);
+    padding: 6px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .user-dropdown-menu.hidden {
+    display: none !important;
+  }
+  .user-menu-header {
+    padding: 10px 12px 8px;
+    background: #161b22;
+    border-radius: 8px;
+    margin-bottom: 4px;
+  }
+  .user-menu-header-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #79c0ff;
+  }
+  .user-menu-header-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  .user-menu-divider {
+    height: 1px;
+    background: #2d333b;
+    margin: 4px 0;
+  }
+  .user-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 12.5px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: background .12s ease;
+  }
+  .user-menu-item:hover {
+    background: #29303d;
+    color: #fff;
+  }
+  .user-menu-item .menu-icon {
+    font-size: 14px;
+    width: 18px;
+    text-align: center;
+    flex: none;
+  }
+  .user-menu-item.danger {
+    color: #ff7b72;
+  }
+  .user-menu-item.danger:hover {
+    background: rgba(248,81,73,.15);
+    color: #ff8e86;
   }
   .user-role-badge {
     display: inline-flex;
@@ -806,14 +961,16 @@
     <label>Mật khẩu (Password)</label>
     <input type="password" id="loginPass" placeholder="Nhập mật khẩu...">
 
-    <button class="btn primary" id="loginSubmitBtn" style="width:100%;margin-top:16px;padding:10px;font-size:14px;">
+    <div class="remember-login-wrap">
+      <label class="remember-login-label">
+        <input type="checkbox" id="rememberLoginChk" checked>
+        <span>Ghi nhớ đăng nhập trên máy này (tự động vào app)</span>
+      </label>
+    </div>
+
+    <button class="btn primary" id="loginSubmitBtn" style="width:100%;margin-top:14px;padding:10px;font-size:14px;">
       🔐 Đăng nhập vào hệ thống
     </button>
-
-    <div class="login-quick-accounts" id="loginQuickWrap">
-      <div class="login-quick-title">Chọn nhanh tài khoản trên máy này:</div>
-      <div class="login-quick-pills" id="loginQuickPills"></div>
-    </div>
 
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid #262c36;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <button type="button" class="btn small" id="loginCloudSyncBtn" title="Tải ngay danh sách tài khoản & gian hàng mới nhất từ máy Admin">
@@ -830,23 +987,83 @@
   <div class="title-wrap">
     <h1>MultiShop</h1>
     <div class="stats-badge" id="statsBadge">Tổng: <b>0</b> gian • <span class="open-count">🟢 0 đang mở</span></div>
-    <div class="user-role-badge admin" id="currentUserBadge">👑 Quản trị viên</div>
   </div>
   <div class="spacer"></div>
   <button class="btn small success hidden" id="backToAdminBtn" title="Quay trở lại quyền Quản trị viên (Admin)">👑 Về lại Admin</button>
-  <button class="btn small" id="otaCheckBtn" title="Kiểm tra và cập nhật tính năng mới trực tiếp (không cần tải lại app)">🔄 v2.1.0</button>
-  <button class="btn small" id="cloudSyncBtn" title="Đồng bộ dữ liệu gian hàng & phân quyền Online ngay lập tức">☁️ Đã đồng bộ Online</button>
-  <button class="btn members-btn" id="membersBtn" title="Tạo tài khoản nhân viên và phân quyền quản lý gian hàng">👥 Thành viên (0)</button>
-  <button class="btn" id="exportBtn" title="Xuất danh sách gian hàng ra file .json để sao lưu">⬇ Xuất Backup</button>
-  <button class="btn" id="importBtn" title="Nhập danh sách gian hàng từ file .json">⬆ Nhập Backup</button>
-  <button class="btn" id="settingsBtn" title="Chọn trình duyệt dùng để mở gian">⚙ Trình duyệt</button>
   <button class="btn primary" id="addBtn">+ Thêm gian hàng</button>
-  <button class="btn danger-outline" id="switchAccountBtn" title="Đăng xuất và quay về màn hình Đăng nhập">🚪 Đăng xuất</button>
+
+  <!-- Avatar Quan tri vien / Tai khoan gom menu tha xuong -->
+  <div class="user-menu-wrap" id="userMenuWrap">
+    <button class="user-avatar-btn" id="userAvatarBtn" type="button" title="Menu Quản trị viên & Cài đặt hệ thống">
+      <div class="user-avatar-circle" id="userAvatarCircle">AD</div>
+      <div class="user-avatar-info">
+        <span class="user-avatar-name" id="userAvatarName">Quản trị viên</span>
+        <span class="user-avatar-role" id="userAvatarRole">admin</span>
+      </div>
+      <span class="user-avatar-arrow">▾</span>
+    </button>
+
+    <div class="user-dropdown-menu hidden" id="userDropdownMenu">
+      <div class="user-menu-header">
+        <div class="user-menu-header-name" id="userMenuHeaderName">👑 Quản trị viên</div>
+        <div class="user-menu-header-sub" id="userMenuHeaderSub">admin • Toàn quyền hệ thống</div>
+      </div>
+      <div class="user-menu-divider"></div>
+
+      <button class="user-menu-item" id="changeAdminPassBtn" type="button">
+        <span class="menu-icon">🔑</span>
+        <span>Đổi mật khẩu Admin</span>
+      </button>
+
+      <button class="user-menu-item admin-only" id="membersBtn" type="button">
+        <span class="menu-icon">👥</span>
+        <span>Quản lý thành viên (<span id="membersMenuCount">0</span>)</span>
+      </button>
+
+      <button class="user-menu-item" id="cloudSyncBtn" type="button">
+        <span class="menu-icon">☁️</span>
+        <span id="cloudSyncText">Đồng bộ Online</span>
+      </button>
+
+      <button class="user-menu-item admin-only" id="checkAllProxyBtn" type="button">
+        <span class="menu-icon">🌐</span>
+        <span>Check tất cả Proxy</span>
+      </button>
+
+      <div class="user-menu-divider admin-only"></div>
+
+      <button class="user-menu-item admin-only" id="exportBtn" type="button">
+        <span class="menu-icon">⬇</span>
+        <span>Xuất Backup (.json)</span>
+      </button>
+
+      <button class="user-menu-item admin-only" id="importBtn" type="button">
+        <span class="menu-icon">⬆</span>
+        <span>Nhập Backup (.json)</span>
+      </button>
+
+      <button class="user-menu-item admin-only" id="settingsBtn" type="button">
+        <span class="menu-icon">⚙</span>
+        <span>Cài đặt trình duyệt</span>
+      </button>
+
+      <button class="user-menu-item" id="otaCheckBtn" type="button">
+        <span class="menu-icon">🔄</span>
+        <span id="otaCheckText">Bản cập nhật Live OTA</span>
+      </button>
+
+      <div class="user-menu-divider"></div>
+
+      <button class="user-menu-item danger" id="switchAccountBtn" type="button">
+        <span class="menu-icon">🚪</span>
+        <span>Đăng xuất</span>
+      </button>
+    </div>
+  </div>
 </header>
 
 <div class="toolbar">
   <div class="search-box">
-    <span class="search-icon">🔍</span>
     <input type="text" id="searchInput" placeholder="Tìm tên gian, thành viên, nhóm, ghi chú, proxy...">
   </div>
 
@@ -857,7 +1074,6 @@
   <div class="group-tabs" id="groupTabs"></div>
 
   <div class="batch-bar">
-    <button class="btn small" id="checkAllProxyBtn" title="Kiểm tra toàn bộ Proxy của các gian hàng xem còn sống (Live) hay chết (Die)">🌐 Check tất cả Proxy</button>
     <label class="select-all-wrap">
       <input type="checkbox" id="selectAllChk">
       <span>Chọn tất cả</span>
@@ -910,7 +1126,7 @@
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
     <h2 style="margin:0;">👥 Quản lý thành viên & Phân quyền CSKH / Vận hành / Ads</h2>
     <div style="display:flex;align-items:center;gap:10px;">
-      <button class="btn small" id="changeAdminPassBtn" title="Đổi tài khoản / mật khẩu của Quản trị viên">🔑 Đổi TK/MK Admin</button>
+      <button class="btn small" id="openAdminPassFromMembersBtn" title="Đổi tài khoản / mật khẩu của Quản trị viên">🔑 Đổi TK/MK Admin</button>
       <button class="btn small" id="closeMembersDlgBtn">✕ Đóng</button>
     </div>
   </div>

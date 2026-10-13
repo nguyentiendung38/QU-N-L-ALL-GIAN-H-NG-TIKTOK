@@ -187,41 +187,58 @@ function applyRoleUI() {
     return;
   }
   document.body.classList.remove('locked');
-  const badge = $('currentUserBadge');
   const isMem = isMemberMode();
+
+  const circle = $('userAvatarCircle');
+  const nameEl = $('userAvatarName');
+  const roleEl = $('userAvatarRole');
+  const headName = $('userMenuHeaderName');
+  const headSub = $('userMenuHeaderSub');
 
   if (isMem) {
     const m = currentUser.member;
     const permLabel = getPermModeLabel(m.permMode || 'cskh');
-    badge.className = 'user-role-badge member';
-    badge.textContent = `👤 Nhân viên: ${m.name} [${permLabel}]`;
-    badge.title = '';
-    badge.style.cursor = 'default';
-    badge.onclick = null;
+    if (circle) {
+      circle.textContent = initials(m.name);
+      circle.style.background = m.color || '#388bfd';
+    }
+    if (nameEl) nameEl.textContent = m.name;
+    if (roleEl) roleEl.textContent = permLabel;
+    if (headName) headName.textContent = `👤 ${m.name}`;
+    if (headSub) headSub.textContent = `${permLabel} • Phụ trách gian hàng`;
     activeMember = m.id;
   } else {
-    badge.className = 'user-role-badge admin';
-    badge.textContent = `👑 Quản trị viên (${authConfig.adminUser || 'admin'})`;
-    badge.title = 'Bấm để đổi tên tài khoản hoặc mật khẩu Quản trị viên (Admin)';
-    badge.style.cursor = 'pointer';
-    badge.onclick = () => openAdminPassDialog();
+    if (circle) {
+      circle.textContent = 'AD';
+      circle.style.background = 'linear-gradient(135deg, #0f9d94, #2ea043)';
+    }
+    if (nameEl) nameEl.textContent = 'Quản trị viên';
+    if (roleEl) roleEl.textContent = authConfig.adminUser || 'admin';
+    if (headName) headName.textContent = '👑 Quản trị viên';
+    if (headSub) headSub.textContent = `${authConfig.adminUser || 'admin'} • Toàn quyền hệ thống`;
   }
 
-  $('membersBtn').classList.toggle('hidden', isMem);
-  $('exportBtn').classList.toggle('hidden', isMem);
-  $('importBtn').classList.toggle('hidden', isMem);
+  // An / Hien cac muc chi danh rieng cho Quản trị viên (Admin) trong menu
+  document.querySelectorAll('.admin-only').forEach((el) => {
+    el.classList.toggle('hidden', isMem);
+  });
+
+  if ($('membersMenuCount')) $('membersMenuCount').textContent = members.length;
+  if ($('changeAdminPassBtn')) $('changeAdminPassBtn').classList.toggle('hidden', isMem);
+
   $('addBtn').classList.toggle('hidden', isMem);
   $('memberFilterSelect').classList.toggle('hidden', isMem);
-  if ($('checkAllProxyBtn')) $('checkAllProxyBtn').classList.toggle('hidden', isMem);
   $('backToAdminBtn').classList.toggle('hidden', !(isMem && currentUser.isAdminPreview));
 }
 
 async function syncFromCloud(force = false, silent = true) {
   const statusEl = $('loginCloudStatus');
   const headerBtn = $('cloudSyncBtn');
+  const headerTxt = $('cloudSyncText');
   if (!silent) {
     if (statusEl) statusEl.textContent = '⏳ Đang đồng bộ dữ liệu Online...';
-    if (headerBtn) headerBtn.textContent = '⏳ Đang đồng bộ...';
+    if (headerTxt) headerTxt.textContent = 'Đang đồng bộ...';
+    else if (headerBtn) headerBtn.textContent = '⏳ Đang đồng bộ...';
   }
   const r = await window.api.cloudPull(force);
   if (r && r.ok) {
@@ -239,7 +256,9 @@ async function syncFromCloud(force = false, silent = true) {
     if (statusEl) {
       statusEl.textContent = `☁️ Online: ${shops.length} gian • ${members.length} TV`;
     }
-    if (headerBtn) {
+    if (headerTxt) {
+      headerTxt.textContent = 'Đã đồng bộ Online';
+    } else if (headerBtn) {
       headerBtn.textContent = '☁️ Đã đồng bộ Online';
     }
 
@@ -255,7 +274,11 @@ async function syncFromCloud(force = false, silent = true) {
     }
     return true;
   } else {
-    if (headerBtn) headerBtn.textContent = '☁️ Đồng bộ Online';
+    if (headerTxt) {
+      headerTxt.textContent = 'Đồng bộ Online';
+    } else if (headerBtn) {
+      headerBtn.textContent = '☁️ Đồng bộ Online';
+    }
     if (!silent) {
       toast('⚠️ Không kết nối được máy chủ Cloud, đang dùng dữ liệu trên máy.');
     }
@@ -265,43 +288,12 @@ async function syncFromCloud(force = false, silent = true) {
 
 // ---- MAN HINH DANG NHAP BAT BUOC KHI MO APP (ADMIN & NHAN VIEN) ----
 function renderLoginQuickAccounts() {
-  const wrap = $('loginQuickWrap');
-  const pills = $('loginQuickPills');
-  if (!wrap || !pills) return;
-  pills.innerHTML = '';
-
-  const adminPill = document.createElement('span');
-  adminPill.className = 'login-quick-pill';
-  adminPill.innerHTML = `👑 Admin (<b>${authConfig.adminUser || 'admin'}</b>)`;
-  adminPill.onclick = () => {
-    $('loginUser').value = authConfig.adminUser || 'admin';
-    $('loginPass').value = '';
-    $('loginPass').focus();
-  };
-  pills.appendChild(adminPill);
-
-  members.forEach((m) => {
-    const uname = m.username || slugUsername(m.name) || m.name;
-    const p = document.createElement('span');
-    p.className = 'login-quick-pill';
-    const dot = document.createElement('span');
-    dot.className = 'member-dot';
-    dot.style.background = m.color || '#388bfd';
-    const txt = document.createElement('span');
-    txt.innerHTML = `${m.name} (<b>${uname}</b>)`;
-    p.append(dot, txt);
-    p.onclick = () => {
-      $('loginUser').value = uname;
-      $('loginPass').value = '';
-      $('loginPass').focus();
-    };
-    pills.appendChild(p);
-  });
-
-  $('loginDefaultHint').textContent =
-    (authConfig.adminPass || '123456') === '123456'
-      ? `TK Admin mặc định: ${authConfig.adminUser || 'admin'} / 123456`
-      : `TK Admin: ${authConfig.adminUser || 'admin'}`;
+  if ($('loginDefaultHint')) {
+    $('loginDefaultHint').textContent =
+      (authConfig.adminPass || '123456') === '123456'
+        ? `TK Admin mặc định: ${authConfig.adminUser || 'admin'} / 123456`
+        : `TK Admin: ${authConfig.adminUser || 'admin'}`;
+  }
 }
 
 function showLoginScreen() {
@@ -322,7 +314,13 @@ function showLoginScreen() {
   $('loginPass').value = '';
   renderLoginQuickAccounts();
   $('loginOverlay').classList.remove('hidden');
-  setTimeout(() => $('loginUser').focus(), 50);
+  setTimeout(() => {
+    if ($('loginUser') && $('loginUser').value.trim()) {
+      $('loginPass').focus();
+    } else if ($('loginUser')) {
+      $('loginUser').focus();
+    }
+  }, 50);
   syncFromCloud(false, true);
 }
 
@@ -335,15 +333,17 @@ function findMatchingMember(u, p) {
   });
 }
 
-async function doLogin() {
+async function doLogin(silent = false) {
   const u = $('loginUser').value.trim();
   const p = $('loginPass').value.trim();
   const errBox = $('loginError');
 
   if (!u || !p) {
-    errBox.textContent = '⚠️ Vui lòng nhập đầy đủ Tài khoản và Mật khẩu!';
-    errBox.classList.remove('hidden');
-    return;
+    if (!silent) {
+      errBox.textContent = '⚠️ Vui lòng nhập đầy đủ Tài khoản và Mật khẩu!';
+      errBox.classList.remove('hidden');
+    }
+    return false;
   }
 
   const checkAdmin = () => {
@@ -354,11 +354,15 @@ async function doLogin() {
 
   // Neu chua khop ngay tren may -> tu dong tai du lieu Online moi nhat tu Cloud roi kiem tra lai
   if (!checkAdmin() && !findMatchingMember(u, p)) {
-    $('loginSubmitBtn').disabled = true;
-    $('loginSubmitBtn').textContent = '⏳ Đang đồng bộ tài khoản Online...';
+    if (!silent) {
+      $('loginSubmitBtn').disabled = true;
+      $('loginSubmitBtn').textContent = '⏳ Đang đồng bộ tài khoản Online...';
+    }
     await syncFromCloud(true, true);
-    $('loginSubmitBtn').disabled = false;
-    $('loginSubmitBtn').textContent = '🔐 Đăng nhập vào hệ thống';
+    if (!silent) {
+      $('loginSubmitBtn').disabled = false;
+      $('loginSubmitBtn').textContent = '🔐 Đăng nhập vào hệ thống';
+    }
   }
 
   // Kiem tra tai khoan Admin
@@ -368,11 +372,16 @@ async function doLogin() {
     document.body.classList.remove('locked');
     $('loginOverlay').classList.add('hidden');
     render();
+    if ($('rememberLoginChk') && $('rememberLoginChk').checked) {
+      await window.api.saveSavedLogin({ user: u, pass: p });
+    } else if (!silent) {
+      await window.api.clearSavedLogin();
+    }
     toast('👑 Đã đăng nhập quyền Quản trị viên (Admin)!');
     reportMyActiveShops();
     refreshOnlineActiveShops();
     syncFromCloud(false, true);
-    return;
+    return true;
   }
 
   // Kiem tra tai khoan Thanh vien (Nhan vien)
@@ -384,27 +393,74 @@ async function doLogin() {
     document.body.classList.remove('locked');
     $('loginOverlay').classList.add('hidden');
     render();
+    if ($('rememberLoginChk') && $('rememberLoginChk').checked) {
+      await window.api.saveSavedLogin({ user: u, pass: p });
+    } else if (!silent) {
+      await window.api.clearSavedLogin();
+    }
     const assignedCount = getMemberShops(foundMember.id).length;
-    toast(`👤 Xin chào ${foundMember.name}! Bạn đang quản lý ${assignedCount} gian hàng (Đã đồng bộ Online).`);
+    toast(`👤 Xin chào ${foundMember.name}! Bạn đang quản lý ${assignedCount} gian hàng.`);
     reportMyActiveShops();
     refreshOnlineActiveShops();
     syncFromCloud(false, true);
-    return;
+    return true;
   }
 
-  errBox.textContent = '❌ Sai tài khoản hoặc mật khẩu! Vui lòng kiểm tra lại.';
-  errBox.classList.remove('hidden');
+  if (!silent) {
+    errBox.textContent = '❌ Sai tài khoản hoặc mật khẩu! Vui lòng kiểm tra lại.';
+    errBox.classList.remove('hidden');
+  }
+  return false;
 }
 
-$('loginSubmitBtn').onclick = doLogin;
+$('loginSubmitBtn').onclick = () => doLogin(false);
 $('loginUser').onkeydown = (e) => {
   if (e.key === 'Enter') $('loginPass').focus();
 };
 $('loginPass').onkeydown = (e) => {
-  if (e.key === 'Enter') doLogin();
+  if (e.key === 'Enter') doLogin(false);
 };
 
-$('switchAccountBtn').onclick = () => showLoginScreen();
+if ($('userAvatarBtn')) {
+  $('userAvatarBtn').onclick = (e) => {
+    e.stopPropagation();
+    const menu = $('userDropdownMenu');
+    const wrap = $('userMenuWrap');
+    if (!menu || !wrap) return;
+    const isHidden = menu.classList.contains('hidden');
+    if (isHidden) {
+      menu.classList.remove('hidden');
+      wrap.classList.add('open');
+    } else {
+      menu.classList.add('hidden');
+      wrap.classList.remove('open');
+    }
+  };
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = $('userMenuWrap');
+  const menu = $('userDropdownMenu');
+  if (wrap && menu && !wrap.contains(e.target)) {
+    menu.classList.add('hidden');
+    wrap.classList.remove('open');
+  }
+});
+
+document.querySelectorAll('.user-menu-item').forEach((item) => {
+  item.addEventListener('click', () => {
+    const menu = $('userDropdownMenu');
+    const wrap = $('userMenuWrap');
+    if (menu) menu.classList.add('hidden');
+    if (wrap) wrap.classList.remove('open');
+  });
+});
+
+$('switchAccountBtn').onclick = async () => {
+  await window.api.clearSavedLogin();
+  showLoginScreen();
+  toast('🚪 Đã đăng xuất khỏi hệ thống');
+};
 $('backToAdminBtn').onclick = () => {
   currentUser = { roleType: 'admin', member: null, isAdminPreview: false };
   activeMember = 'ALL';
@@ -428,12 +484,18 @@ if ($('cloudSyncBtn')) {
 async function checkAndUpdateOta(silent = true) {
   if (!window.api.checkOtaUpdate) return;
   const checkBtn = $('otaCheckBtn');
-  if (!silent && checkBtn) {
-    checkBtn.textContent = '⏳ Đang kiểm tra...';
+  const checkTxt = $('otaCheckText');
+  if (!silent) {
+    if (checkTxt) checkTxt.textContent = 'Đang kiểm tra OTA...';
+    else if (checkBtn) checkBtn.textContent = '⏳ Đang kiểm tra...';
   }
   const res = await window.api.checkOtaUpdate();
   if (res && res.ok) {
-    if (checkBtn) {
+    if (checkTxt) {
+      checkTxt.textContent = res.hasUpdate
+        ? `🔔 Có bản mới v${res.latestVersion}`
+        : `Live OTA: v${res.currentVersion || '2.1.0'}`;
+    } else if (checkBtn) {
       checkBtn.textContent = res.hasUpdate
         ? `🔔 Có bản mới v${res.latestVersion}`
         : `🔄 v${res.currentVersion || '2.1.0'}`;
@@ -816,7 +878,8 @@ function render() {
           : assignedMembers);
 
     if (displayMembers.length > 0) {
-      displayMembers.forEach((m) => {
+      if (displayMembers.length === 1 || isMemberMode()) {
+        const m = displayMembers[0];
         const mb = document.createElement('span');
         mb.className = 'badge member-badge';
         const pTag = m.permMode === 'vanhanh' ? '📦 Vận hành' : (m.permMode === 'ads' ? '📈 Ads' : '🎧 CSKH');
@@ -834,7 +897,35 @@ function render() {
           };
         }
         metaRow.appendChild(mb);
-      });
+      } else {
+        // KHI 2 NHAN VIEN TRO LEN: DROPDOWN GIONG O CHON TAT CA THANH VIEN!
+        const sel = document.createElement('select');
+        sel.className = 'badge member-select-dropdown';
+        sel.title = `Gian hàng có ${displayMembers.length} thành viên phụ trách (Bấm chọn thành viên)`;
+
+        const optDefault = document.createElement('option');
+        optDefault.value = 'ALL';
+        optDefault.textContent = `👥 ${displayMembers.length} nhân viên phụ trách ▾`;
+        sel.appendChild(optDefault);
+
+        displayMembers.forEach((m) => {
+          const pTag = m.permMode === 'vanhanh' ? '📦 Vận hành' : (m.permMode === 'ads' ? '📈 Ads' : '🎧 CSKH');
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.textContent = `${pTag}: ${m.name}`;
+          sel.appendChild(opt);
+        });
+
+        sel.onchange = (e) => {
+          if (e.target.value && e.target.value !== 'ALL') {
+            activeMember = e.target.value;
+            render();
+          }
+        };
+        sel.onclick = (e) => e.stopPropagation();
+
+        metaRow.appendChild(sel);
+      }
     }
 
     if (s.group && s.group.trim()) {
@@ -1563,6 +1654,11 @@ if ($('openAdminPassFromSettingsBtn')) {
     openAdminPassDialog();
   };
 }
+if ($('openAdminPassFromMembersBtn')) {
+  $('openAdminPassFromMembersBtn').onclick = () => {
+    openAdminPassDialog();
+  };
+}
 $('closeAdminPassDlgBtn').onclick = () => $('adminPassDlg').close();
 $('cancelAdminPassBtn').onclick = () => $('adminPassDlg').close();
 
@@ -1762,8 +1858,23 @@ $('pickBrowserBtn').onclick = async () => {
     }
   });
   refreshBrowser();
-  // Bat buoc luon vao man hinh Dang nhap khi mo app
-  showLoginScreen();
+  // Kiem tra neu co tai khoan da duoc ghi nho tren may nay -> tu dong dang nhap
+  let autoLoggedIn = false;
+  try {
+    const saved = await window.api.getSavedLogin();
+    if (saved && saved.user && saved.pass) {
+      if ($('loginUser')) $('loginUser').value = saved.user;
+      if ($('loginPass')) $('loginPass').value = saved.pass;
+      if ($('rememberLoginChk')) $('rememberLoginChk').checked = true;
+      autoLoggedIn = await doLogin(true);
+    }
+  } catch (err) {
+    console.warn('Auto login error:', err);
+  }
+
+  if (!autoLoggedIn) {
+    showLoginScreen();
+  }
   // Kiem tra ban cap nhat moi (Live OTA) ngay khi mo app va moi 60 giay
   setTimeout(() => checkAndUpdateOta(true), 1500);
   setInterval(() => checkAndUpdateOta(true), 60000);

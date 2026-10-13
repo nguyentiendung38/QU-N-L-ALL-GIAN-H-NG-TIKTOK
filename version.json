@@ -1,8 +1,8 @@
 {
-  "version": "2.1.11",
-  "buildNumber": 220,
+  "version": "2.1.12",
+  "buildNumber": 221,
   "updatedAt": "2026-10-13",
-  "notes": "Sua loi doi pass Admin bang modal chuyen nghiep; Chinh padding thanh tim kiem khong bi de icon",
+  "notes": "Gom chuc nang vao Avatar Quan tri vien; Ghi nho dang nhap tu dong; Dropdown danh sach nhan vien tren the shop",
   "files": [
     "index.html",
     "renderer.js",
