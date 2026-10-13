@@ -5,6 +5,7 @@ const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=a
 let shops = [];
 let runningIds = new Set();
 let selectedIds = new Set();
+let proxyStatusMap = new Map();
 let editingId = null;
 let searchQuery = '';
 let activeGroup = '__ALL__';
@@ -51,6 +52,34 @@ function formatProxyBadge(proxy) {
   const parts = raw.split(':');
   if (parts.length >= 2) return `${parts[0]}:${parts[1]}`;
   return raw;
+}
+
+async function checkShopProxy(s, silent = false) {
+  if (!s || !s.proxy || !String(s.proxy).trim()) return { ok: true };
+  proxyStatusMap.set(s.id, { state: 'checking' });
+  render();
+  const res = await window.api.checkProxy(s.proxy);
+  if (res && res.ok) {
+    proxyStatusMap.set(s.id, {
+      state: 'live',
+      ip: res.ip,
+      country: res.country,
+      ms: res.ms
+    });
+    if (!silent) {
+      toast(`🟢 Proxy ${s.name} LIVE! IP: ${res.ip} (${res.ms}ms${res.country ? ' • ' + res.country : ''})`);
+    }
+  } else {
+    proxyStatusMap.set(s.id, {
+      state: 'die',
+      error: (res && res.error) || 'Proxy Die'
+    });
+    if (!silent) {
+      toast(`🔴 Proxy ${s.name} DIE: ${(res && res.error) || 'Không kết nối được'}`);
+    }
+  }
+  render();
+  return res;
 }
 
 function getFilteredShops() {
@@ -102,7 +131,6 @@ function renderGroupTabs() {
     wrap.appendChild(btn);
   }
 
-  // Cap nhat datalist goi y nhom trong popup Them/Sua
   const dl = $('groupSuggestions');
   if (dl) {
     dl.innerHTML = '';
@@ -118,7 +146,6 @@ function updateStatsAndBatchBar(filtered) {
   $('statsBadge').innerHTML =
     `Tổng: <b>${shops.length}</b> gian • <span class="open-count">🟢 ${runningIds.size} đang mở</span>`;
 
-  // Xoa cac id da bi xoa khoi selectedIds
   const validIds = new Set(shops.map((s) => s.id));
   for (const id of Array.from(selectedIds)) {
     if (!validIds.has(id)) selectedIds.delete(id);
@@ -206,13 +233,37 @@ function render() {
       gb.textContent = '📁 ' + s.group.trim();
       metaRow.appendChild(gb);
     }
+
     const proxyShort = formatProxyBadge(s.proxy);
     if (proxyShort) {
+      const pState = proxyStatusMap.get(s.id);
       const pb = document.createElement('span');
       pb.className = 'badge proxy-badge';
-      pb.textContent = '🌐 Proxy: ' + proxyShort;
-      pb.title = 'Đang cấu hình Proxy riêng: ' + proxyShort;
+
+      if (pState && pState.state === 'checking') {
+        pb.textContent = '⏳ Đang check Proxy...';
+      } else if (pState && pState.state === 'live') {
+        pb.classList.add('live');
+        pb.textContent = `🟢 Live: ${pState.ip || proxyShort} (${pState.ms}ms${pState.country ? '•' + pState.country : ''})`;
+        pb.title = 'Proxy hoạt động tốt. Bấm để kiểm tra lại.';
+      } else if (pState && pState.state === 'die') {
+        pb.classList.add('die');
+        pb.textContent = `🔴 Proxy DIE (${proxyShort})`;
+        pb.title = (pState.error || 'Proxy lỗi') + ' - Bấm để kiểm tra lại';
+      } else {
+        pb.textContent = `🌐 ${proxyShort} (Bấm check)`;
+        pb.title = 'Bấm vào đây để kiểm tra Proxy Live hay Die';
+      }
+
+      pb.onclick = () => checkShopProxy(s, false);
       metaRow.appendChild(pb);
+
+      const changeProxyBtn = document.createElement('span');
+      changeProxyBtn.className = 'badge proxy-change-btn';
+      changeProxyBtn.textContent = '✏️ Đổi Proxy';
+      changeProxyBtn.title = 'Đổi nhanh Proxy cho gian này';
+      changeProxyBtn.onclick = () => openDialog(s, true);
+      metaRow.appendChild(changeProxyBtn);
     }
 
     const actions = document.createElement('div');
@@ -246,7 +297,7 @@ function render() {
     tools.append(
       up,
       down,
-      mkBtn('Sửa', 'small', () => openDialog(s)),
+      mkBtn('Sửa', 'small', () => openDialog(s, false)),
       mkBtn('Xóa đăng nhập', 'small danger', () => resetLogin(s), 'Xóa phiên đăng nhập đã lưu của gian này'),
       mkBtn('Xóa gian', 'small danger', () => deleteShop(s))
     );
@@ -266,6 +317,23 @@ function render() {
 }
 
 async function openShop(s, which) {
+  // Neu gian chua mo va co cau hinh Proxy, tu dong kiem tra Proxy truoc khi mo
+  if (!runningIds.has(s.id) && s.proxy && String(s.proxy).trim()) {
+    toast(`Đang kiểm tra Proxy của ${s.name}...`);
+    const check = await checkShopProxy(s, true);
+    if (!check || !check.ok) {
+      const wantChange = confirm(
+        `⚠️ Proxy của gian "${s.name}" hiện đang DIE (${(check && check.error) || 'Không kết nối được'})!\n\n` +
+        `• Bấm OK để đổi Proxy mới ngay (khuyên dùng để tránh lỗi mạng / lộ IP).\n` +
+        `• Bấm Cancel nếu bạn vẫn muốn mở Chrome.`
+      );
+      if (wantChange) {
+        openDialog(s, true);
+        return;
+      }
+    }
+  }
+
   const r = await window.api.openShop(s.id, which);
   if (r && r.ok) {
     runningIds.add(s.id);
@@ -292,6 +360,52 @@ async function closeSingleShop(s) {
     toast('Đã đóng Chrome của gian ' + s.name);
   }
 }
+
+// ---- Check tat ca Proxy ----
+$('checkAllProxyBtn').onclick = async () => {
+  const withProxy = shops.filter((s) => s.proxy && String(s.proxy).trim());
+  if (!withProxy.length) {
+    toast('Chưa có gian hàng nào gắn Proxy riêng để kiểm tra.');
+    return;
+  }
+  const btn = $('checkAllProxyBtn');
+  btn.disabled = true;
+  btn.textContent = `⏳ Đang check (${withProxy.length})...`;
+  toast(`Đang kiểm tra đồng loạt ${withProxy.length} Proxy...`);
+
+  const results = await Promise.all(withProxy.map((s) => checkShopProxy(s, true)));
+  const liveCount = results.filter((r) => r && r.ok).length;
+  const dieCount = withProxy.length - liveCount;
+
+  btn.disabled = false;
+  btn.textContent = '🌐 Check tất cả Proxy';
+  toast(`Kết quả Check ${withProxy.length} Proxy: 🟢 ${liveCount} Live • 🔴 ${dieCount} Die`);
+};
+
+// ---- Test Proxy trong popup Them/Sua ----
+$('testProxyBtn').onclick = async () => {
+  const raw = $('fProxy').value.trim();
+  const st = $('proxyTestStatus');
+  if (!raw) {
+    st.className = 'proxy-test-status wait';
+    st.textContent = 'ℹ️ Đang để trống (sử dụng mạng Internet gốc của máy).';
+    return;
+  }
+  st.className = 'proxy-test-status wait';
+  st.textContent = '⏳ Đang kiểm tra kết nối Proxy...';
+  $('testProxyBtn').disabled = true;
+
+  const res = await window.api.checkProxy(raw);
+  $('testProxyBtn').disabled = false;
+
+  if (res && res.ok) {
+    st.className = 'proxy-test-status ok';
+    st.textContent = `🟢 Proxy LIVE! IP: ${res.ip}${res.country ? ' • Quốc gia: ' + res.country : ''} • Tốc độ: ${res.ms}ms`;
+  } else {
+    st.className = 'proxy-test-status err';
+    st.textContent = `🔴 Proxy DIE: ${(res && res.error) || 'Không kết nối được'}`;
+  }
+};
 
 // ---- Tim kiem & Chon hang loat ----
 $('searchInput').oninput = (e) => {
@@ -371,7 +485,7 @@ function randomColor() {
   return palette[shops.length % palette.length];
 }
 
-function openDialog(shop) {
+function openDialog(shop, focusProxy = false) {
   editingId = shop ? shop.id : null;
   $('dlgTitle').textContent = shop ? 'Sửa gian hàng' : 'Thêm gian hàng';
   $('fName').value = shop ? shop.name : '';
@@ -381,33 +495,64 @@ function openDialog(shop) {
   $('fAds').value = shop ? shop.adsUrl || shop.sellerUrl || DEFAULT_ADS : DEFAULT_ADS;
   $('fOrders').value = shop ? shop.ordersUrl || DEFAULT_ORDERS : DEFAULT_ORDERS;
   $('fColor').value = shop ? shop.color : randomColor();
+  $('proxyTestStatus').className = 'proxy-test-status';
+  $('proxyTestStatus').textContent = '';
   $('dlg').showModal();
+  if (focusProxy) {
+    setTimeout(() => {
+      $('fProxy').focus();
+      $('fProxy').select();
+    }, 50);
+  }
 }
 
-$('addBtn').onclick = () => openDialog(null);
+$('addBtn').onclick = () => openDialog(null, false);
 $('cancelBtn').onclick = () => $('dlg').close();
 
 $('saveBtn').onclick = async () => {
   const name = $('fName').value.trim();
   if (!name) return $('fName').focus();
+  const newProxy = $('fProxy').value.trim();
   const data = {
     name,
     group: $('fGroup').value.trim(),
     note: $('fNote').value.trim(),
-    proxy: $('fProxy').value.trim(),
+    proxy: newProxy,
     adsUrl: $('fAds').value.trim() || DEFAULT_ADS,
     ordersUrl: $('fOrders').value.trim() || DEFAULT_ORDERS,
     color: $('fColor').value
   };
+
+  let proxyChangedWhileRunning = false;
+  let targetShop = null;
+
   if (editingId) {
-    Object.assign(shops.find((x) => x.id === editingId), data);
+    targetShop = shops.find((x) => x.id === editingId);
+    const oldProxy = (targetShop && targetShop.proxy) || '';
+    if (oldProxy !== newProxy) {
+      proxyStatusMap.delete(editingId);
+      if (runningIds.has(editingId)) {
+        proxyChangedWhileRunning = true;
+      }
+    }
+    Object.assign(targetShop, data);
   } else {
-    shops.push({ id: Date.now().toString(36), ...data });
+    targetShop = { id: Date.now().toString(36), ...data };
+    shops.push(targetShop);
   }
+
   await persist();
   $('dlg').close();
   render();
-  toast(editingId ? 'Đã lưu thay đổi!' : 'Đã thêm gian hàng mới!');
+
+  if (proxyChangedWhileRunning && targetShop) {
+    toast('Đang khởi động lại Chrome của ' + targetShop.name + ' để áp dụng Proxy mới...');
+    await window.api.closeShop(targetShop.id);
+    runningIds.delete(targetShop.id);
+    setTimeout(() => openShop(targetShop, 'both'), 400);
+  } else {
+    toast(editingId ? 'Đã lưu thay đổi!' : 'Đã thêm gian hàng mới!');
+  }
 };
 
 // ---- Xoa dang nhap / xoa gian ----
@@ -426,6 +571,7 @@ async function deleteShop(s) {
   }
   selectedIds.delete(s.id);
   runningIds.delete(s.id);
+  proxyStatusMap.delete(s.id);
   shops = shops.filter((x) => x.id !== s.id);
   await persist();
   render();

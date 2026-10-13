@@ -288,7 +288,35 @@
     background: rgba(163,113,247,.14);
     border-color: rgba(163,113,247,.35);
     color: #d2a8ff;
+    cursor: pointer;
+    user-select: none;
   }
+  .badge.proxy-badge:hover { filter: brightness(1.15); }
+  .badge.proxy-badge.live {
+    background: rgba(46,160,67,.16);
+    border-color: rgba(46,160,67,.45);
+    color: #56d364;
+  }
+  .badge.proxy-badge.die {
+    background: rgba(218,54,51,.2);
+    border-color: rgba(218,54,51,.55);
+    color: #ff7b72;
+    font-weight: 600;
+  }
+  .badge.proxy-change-btn {
+    background: rgba(245,165,36,.16);
+    border-color: rgba(245,165,36,.45);
+    color: #f5a524;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .badge.proxy-change-btn:hover { background: rgba(245,165,36,.28); }
+  .proxy-input-row { display: flex; gap: 8px; align-items: center; }
+  .proxy-input-row input { flex: 1; }
+  .proxy-test-status { font-size: 12px; margin-top: 5px; min-height: 18px; }
+  .proxy-test-status.ok { color: #56d364; }
+  .proxy-test-status.err { color: #ff7b72; }
+  .proxy-test-status.wait { color: #f5a524; }
   .note-box {
     margin: 4px 14px 0;
     padding: 5px 8px;
@@ -400,6 +428,7 @@
   <div class="group-tabs" id="groupTabs"></div>
 
   <div class="batch-bar">
+    <button class="btn small" id="checkAllProxyBtn" title="Kiểm tra toàn bộ Proxy của các gian hàng xem còn sống (Live) hay chết (Die)">🌐 Check tất cả Proxy</button>
     <label class="select-all-wrap">
       <input type="checkbox" id="selectAllChk">
       <span>Chọn tất cả</span>
@@ -439,7 +468,11 @@
     </div>
     <div class="full">
       <label>Proxy riêng (Tùy chọn: IP:Port hoặc IP:Port:User:Pass)</label>
-      <input type="text" id="fProxy" placeholder="Để trống nếu dùng mạng gốc. VD: 103.1.2.3:8080:user:pass">
+      <div class="proxy-input-row">
+        <input type="text" id="fProxy" placeholder="Để trống nếu dùng mạng gốc. VD: 103.1.2.3:8080:user:pass">
+        <button type="button" class="btn small" id="testProxyBtn">⚡ Kiểm tra Proxy</button>
+      </div>
+      <div class="proxy-test-status" id="proxyTestStatus"></div>
     </div>
     <div class="full">
       <label>Link GMV Max Ads</label>

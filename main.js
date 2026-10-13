@@ -277,6 +277,91 @@ function parseProxyString(raw) {
   return null;
 }
 
+// Kiem tra Proxy Live hay Die, tra ve IP thuc te, Quoc gia va do tre (ms)
+function checkProxyHealth(rawProxy) {
+  return new Promise((resolve) => {
+    const cfg = parseProxyString(rawProxy);
+    if (!cfg || !cfg.host || !cfg.port || Number.isNaN(cfg.port)) {
+      return resolve({
+        ok: false,
+        error: 'Sai định dạng Proxy (VD đúng: IP:Port hoặc IP:Port:User:Pass)'
+      });
+    }
+
+    const t0 = Date.now();
+    const headers = {
+      Host: 'ip-api.com',
+      'User-Agent': 'Mozilla/5.0',
+      Accept: 'application/json'
+    };
+    if (cfg.username) {
+      headers['Proxy-Authorization'] =
+        'Basic ' + Buffer.from(`${cfg.username}:${cfg.password || ''}`).toString('base64');
+    }
+
+    let settled = false;
+    const done = (resObj) => {
+      if (settled) return;
+      settled = true;
+      resolve(resObj);
+    };
+
+    const req = http.request(
+      {
+        host: cfg.host,
+        port: cfg.port,
+        method: 'GET',
+        path: 'http://ip-api.com/json/?fields=status,countryCode,query',
+        headers,
+        timeout: 6500
+      },
+      (res) => {
+        if (res.statusCode === 407) {
+          res.resume();
+          return done({ ok: false, error: 'Sai User hoặc Pass của Proxy (Lỗi 407)' });
+        }
+        let body = '';
+        res.on('data', (d) => {
+          body += d.toString();
+        });
+        res.on('end', () => {
+          const ms = Date.now() - t0;
+          try {
+            const data = JSON.parse(body);
+            if (data && data.query) {
+              return done({
+                ok: true,
+                ip: data.query,
+                country: data.countryCode || '',
+                ms
+              });
+            }
+          } catch {}
+          if (res.statusCode >= 200 && res.statusCode < 400) {
+            return done({ ok: true, ip: cfg.host, country: '', ms });
+          }
+          done({ ok: false, error: 'Proxy không phản hồi hợp lệ (Mã ' + res.statusCode + ')' });
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      try {
+        req.destroy();
+      } catch {}
+      done({ ok: false, error: 'Quá thời gian chờ (Timeout - Proxy Die)' });
+    });
+
+    req.on('error', () => {
+      done({ ok: false, error: 'Không kết nối được Proxy (Proxy Die)' });
+    });
+
+    req.end();
+  });
+}
+
+ipcMain.handle('proxy:check', (_e, rawProxy) => checkProxyHealth(rawProxy));
+
 // Tao proxy local tu dong dien User/Pass de Chrome khong bao gio hoi popup dang nhap Proxy
 function createAuthenticatedProxyForwarder(shopId, proxyCfg) {
   return new Promise((resolve) => {

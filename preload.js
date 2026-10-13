@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   closeShop: (id) => ipcRenderer.invoke('shop:close', id),
   closeAllShops: () => ipcRenderer.invoke('shops:closeAll'),
   getRunningShops: () => ipcRenderer.invoke('shops:running'),
+  checkProxy: (proxyStr) => ipcRenderer.invoke('proxy:check', proxyStr),
   exportShops: () => ipcRenderer.invoke('shops:export'),
   importShops: () => ipcRenderer.invoke('shops:import'),
   resetProfile: (id) => ipcRenderer.invoke('shop:resetProfile', id),
