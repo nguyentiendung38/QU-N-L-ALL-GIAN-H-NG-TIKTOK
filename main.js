@@ -204,6 +204,7 @@ ipcMain.handle('shops:import', async () => {
         ordersUrl: item.ordersUrl || DEFAULT_ORDERS,
         cskhChatUrl: item.cskhChatUrl || DEFAULT_CSKH_CHAT,
         cskhOrdersUrl: item.cskhOrdersUrl || DEFAULT_CSKH_ORDERS,
+        linkMode: item.linkMode || 'ads',
         color: item.color || '#0f9d94',
         group: item.group ? String(item.group).trim() : '',
         note: item.note ? String(item.note).trim() : '',
