@@ -1308,8 +1308,8 @@ function updateMemberPermLinksUI() {
 
   if ($('mCskhOrdersLabel')) {
     $('mCskhOrdersLabel').textContent = isVanhanh
-      ? '📦 Link mở Đơn hàng (To Ship):'
-      : '💬 Link mở CSKH (Check đơn hàng To Ship):';
+      ? 'Link mở Đơn hàng'
+      : 'Link mở CSKH';
   }
 }
 

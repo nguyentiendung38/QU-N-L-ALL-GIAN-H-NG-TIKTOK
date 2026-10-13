@@ -1,8 +1,8 @@
 {
-  "version": "2.1.9",
+  "version": "2.1.10",
   "buildNumber": 219,
   "updatedAt": "2026-10-13",
-  "notes": "Xoa icon Giao TV; Dong bo realtime trang thai gian hang dang mo giua may Admin va Nhan vien",
+  "notes": "fix font chu",
   "files": [
     "index.html",
     "renderer.js",
