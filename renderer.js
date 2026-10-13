@@ -91,25 +91,12 @@ function getOpenActionForMode(permMode) {
 }
 
 function getShopPermMode(shop) {
-  // Neu dang dang nhap bang tai khoan nhan vien: dua theo quyen cua nhan vien do
+  // Neu dang dang nhap bang tai khoan nhan vien (hoac Admin dang xem thu giao dien nhan vien)
   if (isMemberMode()) {
     return currentUser.member.permMode || 'cskh';
   }
-  // Neu Admin dang loc xem theo 1 thanh vien cu the
-  if (activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__') {
-    const m = members.find((x) => x.id === activeMember);
-    if (m) return m.permMode || 'cskh';
-  }
-  // Neu gian hang duoc set che do Van hanh hoac CSKH
-  if (shop && (shop.linkMode === 'vanhanh' || shop.linkMode === 'cskh')) {
-    return shop.linkMode;
-  }
-  const assigned = getShopMembers(shop);
-  if (assigned.length > 0) {
-    if (assigned.every((m) => (m.permMode || 'cskh') === 'vanhanh')) return 'vanhanh';
-    if (assigned.every((m) => (m.permMode || 'cskh') === 'cskh')) return 'cskh';
-  }
-  return 'ads';
+  // QUAN TRI VIEN (ADMIN) CO TOAN QUYEN TAT CA!
+  return 'admin';
 }
 
 function getVisibleShopsForRole() {
@@ -747,8 +734,41 @@ function render() {
     const actions = document.createElement('div');
     actions.className = 'actions';
 
-    if (shopMode === 'vanhanh') {
-      // Quyen Van hanh: AN GMV Max Ads, AN Check don cu, AN CSKH -> CHI HIEN DUY NHAT 1 nut Don hang (To Ship)
+    if (!isMemberMode()) {
+      // Giao diện Quản trị viên (Admin): TOÀN QUYỀN TẤT CẢ CÁC TÍNH NĂNG!
+      actions.append(
+        mkBtn('GMV Max Ads', '', () => openShop(s, 'ads'), 'Mở tab GMV Max Ads TikTok Seller'),
+        mkBtn('Check đơn', '', () => openShop(s, 'orders'), 'Mở tab Quản lý đơn hàng tổng quan'),
+        mkBtn('💬 CSKH', '', () => openShop(s, 'cskh_chat'), 'Mở tab Tin nhắn CSKH TikTok'),
+        mkBtn('📦 Đơn To Ship', '', () => openShop(s, 'cskh_orders'), 'Mở tab Đơn hàng chờ vận chuyển (To Ship)')
+      );
+      if (isRunning) {
+        actions.append(
+          mkBtn(
+            '⚡ Đưa cửa sổ lên trước',
+            'primary both',
+            () => openShop(s, 'both'),
+            'Đưa cửa sổ Chrome đang chạy lên phía trước'
+          )
+        );
+      } else {
+        actions.append(
+          mkBtn(
+            '🚀 Mở cả 2 Ads',
+            'primary',
+            () => openShop(s, 'both'),
+            'Mở cả 2 tab: GMV Max Ads + Check đơn'
+          ),
+          mkBtn(
+            '🎧 Mở cả 2 CSKH',
+            'success',
+            () => openShop(s, 'cskh_both'),
+            'Mở cả 2 tab: Tin nhắn CSKH + Đơn To Ship'
+          )
+        );
+      }
+    } else if (shopMode === 'vanhanh') {
+      // Quyền Vận hành: ẨN GMV Max Ads, ẨN Check đơn cũ, ẨN CSKH -> CHỈ HIỆN 1 nút Đơn hàng (To Ship)
       const vhBtn = mkBtn(
         isRunning ? '⚡ Đưa cửa sổ lên trước (📦 Đơn hàng)' : '📦 Đơn hàng (To Ship)',
         'primary both',
@@ -757,25 +777,25 @@ function render() {
       );
       actions.append(vhBtn);
     } else if (shopMode === 'cskh') {
-      // Quyen CSKH: AN 2 nut GMV Max Ads & Check don cu, HIEN 2 nut CSKH & Don hang
+      // Quyền CSKH: ẨN GMV Max Ads & Check đơn cũ, HIỆN 2 nút CSKH & Đơn hàng
       actions.append(
         mkBtn('💬 CSKH', '', () => openShop(s, 'cskh_chat'), 'Mở trang Tin nhắn CSKH TikTok Seller'),
         mkBtn('📦 Đơn hàng', '', () => openShop(s, 'cskh_orders'), 'Mở trang Đơn hàng chờ vận chuyển')
       );
       const bothCskh = mkBtn(
-        isRunning ? '⚡ Đưa cửa sổ lên trước' : 'Mở cả 2 (CSKH + Đơn hàng)',
+        isRunning ? '⚡ Đưa cửa sổ lên trước' : '🚀 Mở cả 2 (CSKH + Đơn hàng)',
         'primary both',
         () => openShop(s, 'cskh_both')
       );
       actions.append(bothCskh);
     } else {
-      // Quyen Ads / Quan tri vien mac dinh
+      // Quyền Ads: HIỆN GMV Max Ads + Check đơn
       actions.append(
-        mkBtn('GMV Max Ads', '', () => openShop(s, 'ads')),
-        mkBtn('Check đơn', '', () => openShop(s, 'orders'))
+        mkBtn('GMV Max Ads', '', () => openShop(s, 'ads'), 'Mở trang GMV Max Ads TikTok Seller'),
+        mkBtn('Check đơn', '', () => openShop(s, 'orders'), 'Mở trang Quản lý đơn hàng')
       );
       const bothAds = mkBtn(
-        isRunning ? '⚡ Đưa cửa sổ lên trước' : 'Mở cả 2',
+        isRunning ? '⚡ Đưa cửa sổ lên trước' : '🚀 Mở cả 2 (Ads + Check đơn)',
         'primary both',
         () => openShop(s, 'both')
       );

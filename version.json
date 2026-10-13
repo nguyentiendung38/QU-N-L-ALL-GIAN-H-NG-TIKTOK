@@ -1,8 +1,8 @@
 {
-  "version": "2.1.3",
-  "buildNumber": 213,
+  "version": "2.1.4",
+  "buildNumber": 214,
   "updatedAt": "2026-10-13",
-  "notes": "Kích hoạt hệ thống Cloud OTA tự động không bị giới hạn bởi GitHub",
+  "notes": "Admin toan quyen tat ca: day du nut Ads, Check don, CSKH, Don To Ship va Mo ca 2",
   "files": [
     "index.html",
     "renderer.js",
