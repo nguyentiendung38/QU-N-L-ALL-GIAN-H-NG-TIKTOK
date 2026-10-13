@@ -144,6 +144,7 @@ function applyRoleUI() {
   $('exportBtn').classList.toggle('hidden', isMem);
   $('addBtn').classList.toggle('hidden', isMem);
   $('memberFilterSelect').classList.toggle('hidden', isMem);
+  if ($('checkAllProxyBtn')) $('checkAllProxyBtn').classList.toggle('hidden', isMem);
   $('backToAdminBtn').classList.toggle('hidden', !(isMem && currentUser.isAdminPreview));
   $('importBtn').textContent = isMem ? '📥 Nạp shop từ Admin' : '⬆ Nhập Backup';
 }
@@ -619,12 +620,14 @@ function render() {
       pb.onclick = () => checkShopProxy(s, false);
       metaRow.appendChild(pb);
 
-      const changeProxyBtn = document.createElement('span');
-      changeProxyBtn.className = 'badge proxy-change-btn';
-      changeProxyBtn.textContent = '✏️ Đổi Proxy';
-      changeProxyBtn.title = 'Đổi nhanh Proxy cho gian này';
-      changeProxyBtn.onclick = () => openDialog(s, true);
-      metaRow.appendChild(changeProxyBtn);
+      if (!isMemberMode()) {
+        const changeProxyBtn = document.createElement('span');
+        changeProxyBtn.className = 'badge proxy-change-btn';
+        changeProxyBtn.textContent = '✏️ Đổi Proxy';
+        changeProxyBtn.title = 'Đổi nhanh Proxy cho gian này';
+        changeProxyBtn.onclick = () => openDialog(s, true);
+        metaRow.appendChild(changeProxyBtn);
+      }
     }
 
     const actions = document.createElement('div');
@@ -712,14 +715,23 @@ async function openShop(s, which) {
     toast(`Đang kiểm tra Proxy của ${s.name}...`);
     const check = await checkShopProxy(s, true);
     if (!check || !check.ok) {
-      const wantChange = confirm(
-        `⚠️ Proxy của gian "${s.name}" hiện đang DIE (${(check && check.error) || 'Không kết nối được'})!\n\n` +
-        `• Bấm OK để đổi Proxy mới ngay (khuyên dùng để tránh lỗi mạng / lộ IP).\n` +
-        `• Bấm Cancel nếu bạn vẫn muốn mở Chrome.`
-      );
-      if (wantChange) {
-        openDialog(s, true);
-        return;
+      if (isMemberMode()) {
+        const forceOpen = confirm(
+          `⚠️ Proxy của gian "${s.name}" hiện không kết nối được!\n\n` +
+          `• Bấm Cancel để báo Quản trị viên (Admin) kiểm tra lại Proxy.\n` +
+          `• Bấm OK nếu bạn vẫn muốn tiếp tục mở Chrome.`
+        );
+        if (!forceOpen) return;
+      } else {
+        const wantChange = confirm(
+          `⚠️ Proxy của gian "${s.name}" hiện đang DIE (${(check && check.error) || 'Không kết nối được'})!\n\n` +
+          `• Bấm OK để đổi Proxy mới ngay (khuyên dùng để tránh lỗi mạng / lộ IP).\n` +
+          `• Bấm Cancel nếu bạn vẫn muốn mở Chrome.`
+        );
+        if (wantChange) {
+          openDialog(s, true);
+          return;
+        }
       }
     }
   }
