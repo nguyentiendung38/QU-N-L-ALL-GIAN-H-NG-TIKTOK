@@ -563,7 +563,7 @@ ipcMain.handle('members:save', (_e, members) => {
 
 ipcMain.handle('auth:get', () => readAuthObj());
 
-ipcMain.handle('auth:save', (_e, cfg) => {
+ipcMain.handle('auth:save', async (_e, cfg) => {
   const s = readJson(settingsFile(), {});
   if (cfg && typeof cfg === 'object') {
     if (cfg.adminUser) s.adminUser = String(cfg.adminUser).trim();
@@ -572,7 +572,7 @@ ipcMain.handle('auth:save', (_e, cfg) => {
     if (typeof cfg.requireLogin === 'boolean') s.requireLogin = cfg.requireLogin;
   }
   writeJson(settingsFile(), s);
-  scheduleCloudPush();
+  await pushToCloudNow();
   return true;
 });
 

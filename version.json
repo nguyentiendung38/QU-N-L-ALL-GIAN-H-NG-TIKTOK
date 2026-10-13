@@ -1,8 +1,8 @@
 {
-  "version": "2.1.10",
-  "buildNumber": 219,
+  "version": "2.1.11",
+  "buildNumber": 220,
   "updatedAt": "2026-10-13",
-  "notes": "fix font chu",
+  "notes": "Sua loi doi pass Admin bang modal chuyen nghiep; Chinh padding thanh tim kiem khong bi de icon",
   "files": [
     "index.html",
     "renderer.js",

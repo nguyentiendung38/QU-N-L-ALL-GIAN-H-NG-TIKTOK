@@ -195,10 +195,16 @@ function applyRoleUI() {
     const permLabel = getPermModeLabel(m.permMode || 'cskh');
     badge.className = 'user-role-badge member';
     badge.textContent = `👤 Nhân viên: ${m.name} [${permLabel}]`;
+    badge.title = '';
+    badge.style.cursor = 'default';
+    badge.onclick = null;
     activeMember = m.id;
   } else {
     badge.className = 'user-role-badge admin';
     badge.textContent = `👑 Quản trị viên (${authConfig.adminUser || 'admin'})`;
+    badge.title = 'Bấm để đổi tên tài khoản hoặc mật khẩu Quản trị viên (Admin)';
+    badge.style.cursor = 'pointer';
+    badge.onclick = () => openAdminPassDialog();
   }
 
   $('membersBtn').classList.toggle('hidden', isMem);
@@ -310,6 +316,7 @@ function showLoginScreen() {
   if ($('membersDlg') && $('membersDlg').open) $('membersDlg').close();
   if ($('dlg') && $('dlg').open) $('dlg').close();
   if ($('settingsDlg') && $('settingsDlg').open) $('settingsDlg').close();
+  if ($('adminPassDlg') && $('adminPassDlg').open) $('adminPassDlg').close();
 
   $('loginError').classList.add('hidden');
   $('loginPass').value = '';
@@ -1536,16 +1543,86 @@ $('closeMembersDlgBtn').onclick = () => $('membersDlg').close();
 $('mCancelEditBtn').onclick = () => resetMemberForm();
 $('openLoginFromModalBtn').onclick = () => showLoginScreen();
 
-$('changeAdminPassBtn').onclick = async () => {
-  const newU = prompt('Nhập tên tài khoản Quản trị viên (Admin):', authConfig.adminUser || 'admin');
-  if (!newU || !newU.trim()) return;
-  const newP = prompt('Nhập mật khẩu mới cho Quản trị viên (Admin):', authConfig.adminPass || '123456');
-  if (!newP || !newP.trim()) return;
-  authConfig.adminUser = newU.trim();
-  authConfig.adminPass = newP.trim();
+function openAdminPassDialog() {
+  if (!authConfig) authConfig = { adminUser: 'admin', adminPass: '123456', requireLogin: true };
+  $('adminUserField').value = authConfig.adminUser || 'admin';
+  $('adminNewPassField').value = '';
+  $('adminConfirmPassField').value = '';
+  $('adminNewPassField').type = 'password';
+  $('toggleAdminPassVisibilityBtn').textContent = '👁';
+  $('adminPassError').classList.add('hidden');
+  $('adminPassError').textContent = '';
+  $('adminPassDlg').showModal();
+  setTimeout(() => $('adminNewPassField').focus(), 50);
+}
+
+$('changeAdminPassBtn').onclick = () => openAdminPassDialog();
+if ($('openAdminPassFromSettingsBtn')) {
+  $('openAdminPassFromSettingsBtn').onclick = () => {
+    $('settingsDlg').close();
+    openAdminPassDialog();
+  };
+}
+$('closeAdminPassDlgBtn').onclick = () => $('adminPassDlg').close();
+$('cancelAdminPassBtn').onclick = () => $('adminPassDlg').close();
+
+$('toggleAdminPassVisibilityBtn').onclick = () => {
+  const f = $('adminNewPassField');
+  if (f.type === 'password') {
+    f.type = 'text';
+    $('toggleAdminPassVisibilityBtn').textContent = '🙈';
+  } else {
+    f.type = 'password';
+    $('toggleAdminPassVisibilityBtn').textContent = '👁';
+  }
+};
+
+$('saveAdminPassBtn').onclick = async () => {
+  const user = $('adminUserField').value.trim();
+  const pass = $('adminNewPassField').value.trim();
+  const confirm = $('adminConfirmPassField').value.trim();
+  const errEl = $('adminPassError');
+
+  if (!user) {
+    errEl.textContent = '⚠️ Tên tài khoản Admin không được để trống!';
+    errEl.classList.remove('hidden');
+    $('adminUserField').focus();
+    return;
+  }
+  if (!pass) {
+    errEl.textContent = '⚠️ Mật khẩu mới không được để trống!';
+    errEl.classList.remove('hidden');
+    $('adminNewPassField').focus();
+    return;
+  }
+  if (pass !== confirm) {
+    errEl.textContent = '❌ Mật khẩu xác nhận không trùng khớp! Vui lòng nhập lại.';
+    errEl.classList.remove('hidden');
+    $('adminConfirmPassField').focus();
+    return;
+  }
+
+  errEl.classList.add('hidden');
+  $('saveAdminPassBtn').disabled = true;
+  $('saveAdminPassBtn').textContent = '⏳ Đang lưu mật khẩu...';
+
+  authConfig.adminUser = user;
+  authConfig.adminPass = pass;
+
+  // Luu xuong file tren may va dong bo len Cloud ngay
   await window.api.saveAuthConfig(authConfig);
-  render();
-  toast(`🔑 Đã cập nhật tài khoản Admin: ${authConfig.adminUser}`);
+  try {
+    await window.api.cloudPush();
+  } catch {}
+
+  $('saveAdminPassBtn').disabled = false;
+  $('saveAdminPassBtn').textContent = '💾 Lưu mật khẩu';
+  $('adminPassDlg').close();
+
+  // Cap nhat badge va thong bao
+  applyRoleUI();
+  renderLoginQuickAccounts();
+  toast(`🔑 Đổi mật khẩu Admin thành công! Tài khoản: ${user}`);
 };
 
 $('mSelectAllShopsBtn').onclick = () => {

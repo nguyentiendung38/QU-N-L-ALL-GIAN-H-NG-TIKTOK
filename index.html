@@ -101,7 +101,8 @@
   }
   .search-box input {
     width: 100%;
-    padding: 8px 12px 8px 32px;
+    box-sizing: border-box;
+    padding: 8px 14px 8px 38px;
     border-radius: 7px;
     border: 1px solid var(--line);
     background: var(--bg);
@@ -111,12 +112,14 @@
   .search-box input:focus { outline: none; border-color: var(--teal); }
   .search-icon {
     position: absolute;
-    left: 10px;
+    left: 12px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--muted);
-    font-size: 13px;
+    font-size: 14px;
+    line-height: 1;
     pointer-events: none;
+    user-select: none;
   }
 
   .group-tabs {
@@ -725,8 +728,9 @@
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .form-grid .full { grid-column: 1 / -1; }
   label { display: block; font-size: 12px; color: #9aa0a6; margin: 10px 0 4px; }
-  input[type=text] {
+  input[type=text], input[type=password] {
     width: 100%;
+    box-sizing: border-box;
     padding: 9px 10px;
     border-radius: 6px;
     border: 1px solid #3a414c;
@@ -735,7 +739,7 @@
     font-size: 13.5px;
     font-family: inherit;
   }
-  input[type=text]:focus { outline: none; border-color: var(--teal); }
+  input[type=text]:focus, input[type=password]:focus { outline: none; border-color: var(--teal); }
   input[type=color] { width: 60px; height: 34px; border: 0; background: transparent; padding: 0; cursor: pointer; }
   .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
   .mono { font-family: Consolas, monospace; font-size: 12px; color: #cfd3d8; word-break: break-all; }
@@ -986,8 +990,60 @@
   </div>
 </dialog>
 
+<dialog id="adminPassDlg" style="width: 440px; max-width: 95vw;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">
+    <h2 style="margin:0;font-size:18px;">🔐 Đổi tài khoản & Mật khẩu Admin</h2>
+    <button class="btn small" id="closeAdminPassDlgBtn" type="button">✕</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin:0 0 14px;line-height:1.4;">
+    Quản trị viên (Admin) có toàn quyền cấu hình các gian hàng và phân quyền cho nhân viên.
+  </p>
+
+  <div style="display:flex;flex-direction:column;gap:12px;">
+    <div>
+      <label style="display:block;margin:0 0 5px;font-size:12px;color:var(--muted);font-weight:600;">Tên tài khoản Admin *</label>
+      <input type="text" id="adminUserField" placeholder="admin" autocomplete="username">
+    </div>
+
+    <div>
+      <label style="display:block;margin:0 0 5px;font-size:12px;color:var(--muted);font-weight:600;">Mật khẩu mới *</label>
+      <div style="position:relative;">
+        <input type="password" id="adminNewPassField" placeholder="Nhập mật khẩu mới" autocomplete="new-password" style="padding-right:42px;">
+        <button type="button" id="toggleAdminPassVisibilityBtn" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;padding:4px 6px;font-size:15px;" title="Hiện / Ẩn mật khẩu">👁</button>
+      </div>
+    </div>
+
+    <div>
+      <label style="display:block;margin:0 0 5px;font-size:12px;color:var(--muted);font-weight:600;">Nhập lại mật khẩu mới *</label>
+      <input type="password" id="adminConfirmPassField" placeholder="Nhập lại mật khẩu mới" autocomplete="new-password">
+    </div>
+
+    <div id="adminPassError" class="login-error hidden" style="margin:2px 0 0;font-size:12px;padding:8px 12px;"></div>
+  </div>
+
+  <div class="row" style="margin-top:18px;display:flex;justify-content:flex-end;gap:8px;">
+    <button class="btn" id="cancelAdminPassBtn" type="button">Hủy</button>
+    <button class="btn primary" id="saveAdminPassBtn" type="button">💾 Lưu mật khẩu</button>
+  </div>
+</dialog>
+
 <dialog id="settingsDlg">
-  <h2>Trình duyệt dùng để mở gian</h2>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <h2 style="margin:0;font-size:18px;">⚙ Cài đặt hệ thống</h2>
+    <button class="btn small" onclick="$('settingsDlg').close()">✕</button>
+  </div>
+
+  <div style="background:#14181f;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div>
+        <div style="font-weight:600;font-size:13px;color:#79c0ff;">🔐 Tài khoản & Mật khẩu Quản trị viên</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px;">Đổi tên đăng nhập hoặc mật khẩu Admin để bảo mật hệ thống</div>
+      </div>
+      <button class="btn small" id="openAdminPassFromSettingsBtn" type="button">🔑 Đổi TK/MK Admin</button>
+    </div>
+  </div>
+
+  <h3 style="margin:0 0 8px;font-size:14px;">🌐 Trình duyệt dùng để mở gian</h3>
   <p style="color: var(--muted); font-size: 13px; margin-top: 0;">Mặc định app tự tìm Google Chrome (nếu không có thì dùng Microsoft Edge).</p>
   <div class="mono" id="browserPath">…</div>
   <div class="row">
