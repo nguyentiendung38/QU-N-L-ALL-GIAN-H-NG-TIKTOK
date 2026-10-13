@@ -1,8 +1,8 @@
 {
-  "version": "2.1.2",
-  "buildNumber": 212,
+  "version": "2.1.3",
+  "buildNumber": 213,
   "updatedAt": "2026-10-13",
-  "notes": "v2.1.2",
+  "notes": "Kích hoạt hệ thống Cloud OTA tự động không bị giới hạn bởi GitHub",
   "files": [
     "index.html",
     "renderer.js",

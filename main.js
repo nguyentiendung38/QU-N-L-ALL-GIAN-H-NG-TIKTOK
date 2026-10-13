@@ -357,24 +357,77 @@ const GITHUB_RAW_BASE =
 ipcMain.handle('ota:check', async () => {
   try {
     const current = getCurrentVersionInfo();
+    const currentBuild = Number(current.buildNumber) || 0;
+
+    // 1. Kiem tra Cloud OTA Manifest (nhanh, public, khong bi chan boi GitHub private repo)
+    const cloudManifestUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${DEFAULT_CLOUD_KEY}/otamanifest`;
+    const mRes = await httpsReq(cloudManifestUrl, 'GET');
+    let bbKey = '';
+    let remoteBuild = 0;
+    if (mRes.status === 200 && mRes.body) {
+      let rawM = '';
+      try {
+        rawM = JSON.parse(mRes.body) || '';
+      } catch {
+        rawM = String(mRes.body).replace(/^"|"$/g, '');
+      }
+      if (rawM && rawM.includes('-')) {
+        const parts = rawM.split('-');
+        bbKey = parts[0];
+        remoteBuild = parseInt(parts[1], 10) || 0;
+      }
+    }
+
+    if (bbKey && remoteBuild > 0) {
+      const hasUpdate = remoteBuild > currentBuild;
+      let notes = 'Cập nhật tính năng mới từ hệ thống';
+      let latestVersion = '2.1.' + remoteBuild;
+
+      if (hasUpdate) {
+        try {
+          const bbInfo = await httpsReq(`https://bytebin.lucko.me/${bbKey}`, 'GET');
+          if (bbInfo.status === 200 && bbInfo.body) {
+            const parsed = JSON.parse(bbInfo.body);
+            if (parsed.version) latestVersion = parsed.version;
+            if (parsed.notes) notes = parsed.notes;
+          }
+        } catch {}
+      }
+
+      return {
+        ok: true,
+        hasUpdate,
+        currentVersion: current.version,
+        latestVersion,
+        buildNumber: remoteBuild,
+        notes,
+        bbKey
+      };
+    }
+
+    // 2. Du phong kiem tra GitHub Raw (neu repo duoc set public)
     const verUrl = `${GITHUB_RAW_BASE}/version.json?t=${Date.now()}`;
     const r = await httpsReq(verUrl, 'GET');
-    if (r.status !== 200 || !r.body) {
-      return { ok: false, error: 'Không kết nối được GitHub kiểm tra cập nhật' };
+    if (r.status === 200 && r.body) {
+      const remote = JSON.parse(r.body);
+      const gitBuild = Number(remote.buildNumber) || 0;
+      const hasUpdate = gitBuild > currentBuild || remote.version !== current.version;
+      return {
+        ok: true,
+        hasUpdate,
+        currentVersion: current.version,
+        latestVersion: remote.version,
+        buildNumber: gitBuild,
+        notes: remote.notes || 'Cập nhật tính năng mới',
+        updatedAt: remote.updatedAt || ''
+      };
     }
-    const remote = JSON.parse(r.body);
-    const remoteBuild = Number(remote.buildNumber) || 0;
-    const currentBuild = Number(current.buildNumber) || 0;
-    const hasUpdate = remoteBuild > currentBuild || remote.version !== current.version;
 
     return {
       ok: true,
-      hasUpdate,
+      hasUpdate: false,
       currentVersion: current.version,
-      latestVersion: remote.version,
-      buildNumber: remoteBuild,
-      notes: remote.notes || 'Cập nhật tính năng và cải tiến hệ thống',
-      updatedAt: remote.updatedAt || ''
+      latestVersion: current.version
     };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -383,27 +436,65 @@ ipcMain.handle('ota:check', async () => {
 
 ipcMain.handle('ota:apply', async () => {
   try {
-    const verUrl = `${GITHUB_RAW_BASE}/version.json?t=${Date.now()}`;
-    const verRes = await httpsReq(verUrl, 'GET');
-    if (verRes.status !== 200 || !verRes.body) {
-      return { ok: false, error: 'Không tải được thông tin phiên bản mới từ GitHub' };
-    }
-    const remote = JSON.parse(verRes.body);
-    const filesToDownload = Array.isArray(remote.files) && remote.files.length
-      ? remote.files
-      : ['index.html', 'renderer.js', 'preload.js', 'version.json'];
-
     const targetDir = liveAppDir();
     fs.mkdirSync(targetDir, { recursive: true });
 
-    for (const f of filesToDownload) {
-      const fileUrl = `${GITHUB_RAW_BASE}/${f}?t=${Date.now()}`;
-      const fRes = await httpsReq(fileUrl, 'GET');
-      if (fRes.status === 200 && fRes.body && fRes.body.length > 50) {
-        fs.writeFileSync(path.join(targetDir, f), fRes.body, 'utf8');
-      } else if (f === 'index.html' || f === 'renderer.js') {
-        return { ok: false, error: `Không tải được file ${f} từ GitHub` };
+    let appliedVersion = '';
+    let appliedNotes = '';
+
+    // 1. Uu tien tai bundle truc tiep tu Cloud OTA (nhanh trong 1 giay)
+    const cloudManifestUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${DEFAULT_CLOUD_KEY}/otamanifest`;
+    const mRes = await httpsReq(cloudManifestUrl, 'GET');
+    let bbKey = '';
+    if (mRes.status === 200 && mRes.body) {
+      let rawM = '';
+      try {
+        rawM = JSON.parse(mRes.body) || '';
+      } catch {
+        rawM = String(mRes.body).replace(/^"|"$/g, '');
       }
+      if (rawM && rawM.includes('-')) {
+        bbKey = rawM.split('-')[0];
+      }
+    }
+
+    if (bbKey) {
+      const bbRes = await httpsReq(`https://bytebin.lucko.me/${bbKey}`, 'GET');
+      if (bbRes.status === 200 && bbRes.body) {
+        const bundle = JSON.parse(bbRes.body);
+        if (bundle && bundle.files) {
+          for (const [fname, content] of Object.entries(bundle.files)) {
+            fs.writeFileSync(path.join(targetDir, fname), content, 'utf8');
+          }
+          appliedVersion = bundle.version || '2.1.x';
+          appliedNotes = bundle.notes || 'Cập nhật thành công';
+        }
+      }
+    }
+
+    // 2. Du phong: tai tung file tu GitHub
+    if (!appliedVersion) {
+      const verUrl = `${GITHUB_RAW_BASE}/version.json?t=${Date.now()}`;
+      const verRes = await httpsReq(verUrl, 'GET');
+      if (verRes.status === 200 && verRes.body) {
+        const remote = JSON.parse(verRes.body);
+        const filesToDownload = Array.isArray(remote.files) && remote.files.length
+          ? remote.files
+          : ['index.html', 'renderer.js', 'preload.js', 'version.json'];
+
+        for (const f of filesToDownload) {
+          const fRes = await httpsReq(`${GITHUB_RAW_BASE}/${f}?t=${Date.now()}`, 'GET');
+          if (fRes.status === 200 && fRes.body && fRes.body.length > 50) {
+            fs.writeFileSync(path.join(targetDir, f), fRes.body, 'utf8');
+          }
+        }
+        appliedVersion = remote.version;
+        appliedNotes = remote.notes;
+      }
+    }
+
+    if (!appliedVersion) {
+      return { ok: false, error: 'Không tải được gói cập nhật mới từ hệ thống' };
     }
 
     // Sao chep cac file tai nguyen logo/icon sang thu muc live_app
@@ -419,7 +510,7 @@ ipcMain.handle('ota:apply', async () => {
       win.loadFile(path.join(targetDir, 'index.html'));
     }
 
-    return { ok: true, version: remote.version, notes: remote.notes };
+    return { ok: true, version: appliedVersion, notes: appliedNotes };
   } catch (e) {
     return { ok: false, error: e.message };
   }
