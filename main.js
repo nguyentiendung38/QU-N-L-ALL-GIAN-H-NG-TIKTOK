@@ -20,6 +20,10 @@ const DEFAULT_ADS =
   'https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&btm_pre_unit_params=%7B%22btm_origin%22%3A%22sidebar_menu_Qu%E1%BA%A3ng+c%C3%A1o+c%E1%BB%ADa+h%C3%A0ng%22%7D';
 // Khong gan cung khoang thoi gian: de TikTok tu mo ngay hien tai
 const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=all';
+const DEFAULT_CSKH_CHAT =
+  'https://seller-vn.tiktok.com/chat/inbox/current?oec_seller_id=7494826072462165266&shop_region=VN&lang=en&from=seller_center_navigation_im';
+const DEFAULT_CSKH_ORDERS =
+  'https://seller-vn.tiktok.com/order?order_status[]=1&selected_sort=11&tab=to_ship';
 
 const shopsFile = () => path.join(app.getPath('userData'), 'shops.json');
 const membersFile = () => path.join(app.getPath('userData'), 'members.json');
@@ -198,6 +202,8 @@ ipcMain.handle('shops:import', async () => {
         name: String(item.name).trim(),
         adsUrl: item.adsUrl || item.sellerUrl || DEFAULT_ADS,
         ordersUrl: item.ordersUrl || DEFAULT_ORDERS,
+        cskhChatUrl: item.cskhChatUrl || DEFAULT_CSKH_CHAT,
+        cskhOrdersUrl: item.cskhOrdersUrl || DEFAULT_CSKH_ORDERS,
         color: item.color || '#0f9d94',
         group: item.group ? String(item.group).trim() : '',
         note: item.note ? String(item.note).trim() : '',
@@ -1014,6 +1020,8 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
   const urls = [];
   if (which === 'ads' || which === 'both') urls.push(shop.adsUrl || shop.sellerUrl || DEFAULT_ADS);
   if (which === 'orders' || which === 'both') urls.push(shop.ordersUrl || DEFAULT_ORDERS);
+  if (which === 'cskh_chat' || which === 'cskh_both') urls.push(shop.cskhChatUrl || DEFAULT_CSKH_CHAT);
+  if (which === 'cskh_orders' || which === 'cskh_both') urls.push(shop.cskhOrdersUrl || DEFAULT_CSKH_ORDERS);
   if (!urls.length) return { ok: false, error: 'Thieu link de mo' };
 
   const dir = path.join(profilesRoot(), safeId(id));

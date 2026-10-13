@@ -838,13 +838,35 @@
       </div>
       <div class="proxy-test-status" id="proxyTestStatus"></div>
     </div>
-    <div class="full">
-      <label>Link GMV Max Ads</label>
-      <input type="text" id="fAds" placeholder="https://seller-vn.tiktok.com/ads-creation/dashboard?...">
+
+    <div class="full" style="margin-top:6px;">
+      <label style="margin-bottom:6px;">Chế độ cấu hình đường dẫn cho gian hàng:</label>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn small primary" id="dlgModeAdsBtn" style="flex:1;">📈 Link GMV Max Ads & Check Đơn</button>
+        <button type="button" class="btn small" id="dlgModeCskhBtn" style="flex:1;">🎧 Quyền CSKH (Link CSKH & Đơn hàng)</button>
+      </div>
     </div>
-    <div class="full">
-      <label>Link Check Đơn hàng</label>
-      <input type="text" id="fOrders" placeholder="https://seller-vn.tiktok.com/order?...">
+
+    <div class="full" id="fAdsOrdersGroup">
+      <div>
+        <label>Link GMV Max Ads</label>
+        <input type="text" id="fAds" placeholder="https://seller-vn.tiktok.com/ads-creation/dashboard?...">
+      </div>
+      <div style="margin-top:8px;">
+        <label>Link Check Đơn hàng</label>
+        <input type="text" id="fOrders" placeholder="https://seller-vn.tiktok.com/order?...">
+      </div>
+    </div>
+
+    <div class="full hidden" id="fCskhGroup">
+      <div>
+        <label style="color:#56e3d8;font-weight:600;">💬 Đường link CSKH (Tin nhắn khách hàng)</label>
+        <input type="text" id="fCskhChat" placeholder="https://seller-vn.tiktok.com/chat/inbox/current?...">
+      </div>
+      <div style="margin-top:8px;">
+        <label style="color:#56e3d8;font-weight:600;">📦 Đường link Đơn hàng CSKH (Chờ vận chuyển)</label>
+        <input type="text" id="fCskhOrders" placeholder="https://seller-vn.tiktok.com/order?order_status[]=1&selected_sort=11&tab=to_ship">
+      </div>
     </div>
   </div>
   <div class="row">
@@ -855,14 +877,14 @@
 
 <dialog id="membersDlg">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <h2 style="margin:0;">👥 Quản lý thành viên & Cấp tài khoản đăng nhập</h2>
+    <h2 style="margin:0;">👥 Quản lý thành viên & Phân quyền CSKH / Quản lý</h2>
     <div style="display:flex;align-items:center;gap:10px;">
       <button class="btn small" id="changeAdminPassBtn" title="Đổi tài khoản / mật khẩu của Quản trị viên">🔑 Đổi TK/MK Admin</button>
       <button class="btn small" id="closeMembersDlgBtn">✕ Đóng</button>
     </div>
   </div>
   <p style="color: var(--muted); font-size: 12.5px; margin: 6px 0 12px;">
-    Khi mở phần mềm, hệ thống luôn bắt buộc đăng nhập. Cấp <b>Tài khoản & Mật khẩu</b> cho từng nhân viên và tích chọn các shop giao cho họ: đăng nhập tài khoản Admin sẽ vào giao diện Quản trị viên, đăng nhập tài khoản Nhân viên sẽ vào giao diện Nhân viên (chỉ hiện các shop được giao).
+    Khi set <b>🎧 Quyền CSKH</b> cho nhân viên: hệ thống sẽ <b>ẩn 2 nút GMV Max Ads & Check Đơn hàng</b>, và chỉ hiển thị <b>2 nút: 💬 CSKH + 📦 Đơn hàng</b> khi nhân viên đó đăng nhập!
   </p>
 
   <div class="members-layout">
@@ -874,7 +896,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div>
           <label>Tài khoản đăng nhập *</label>
-          <input type="text" id="mUsername" placeholder="VD: nhanvien1">
+          <input type="text" id="mUsername" placeholder="VD: cskh1">
         </div>
         <div>
           <label>Mật khẩu *</label>
@@ -884,13 +906,26 @@
 
       <div style="display:grid;grid-template-columns:1fr 70px;gap:8px;">
         <div>
-          <label>Vai trò / Chức vụ</label>
-          <input type="text" id="mRole" placeholder="VD: Vận hành, Ads, Sale...">
+          <label>Set quyền nút mở cho nhân viên *</label>
+          <select id="mPermMode" class="member-filter-select" style="width:100%;padding:8px 10px;background:#12161b;border-color:#3a414c;">
+            <option value="cskh">🎧 Quyền CSKH (Ẩn GMV Ads • Mở CSKH & Đơn hàng)</option>
+            <option value="ads">📈 Quyền Ads / Vận hành (Mở GMV Ads & Check đơn)</option>
+          </select>
         </div>
         <div>
           <label>Màu</label>
           <input type="color" id="mColor" value="#388bfd">
         </div>
+      </div>
+
+      <div id="mCskhLinksBox" style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#10141a;border:1px solid rgba(15,157,148,.4);">
+        <div style="font-size:11.5px;color:#56e3d8;font-weight:600;margin-bottom:4px;">
+          🔗 2 Mục hiển thị cho nhân viên CSKH (Tự động ẩn GMV Max Ads & Check đơn):
+        </div>
+        <label style="margin-top:4px;">1. Đường link CSKH (Tin nhắn):</label>
+        <input type="text" id="mCskhChat" style="font-size:12px;padding:6px 8px;">
+        <label style="margin-top:6px;">2. Đường link Đơn hàng (Chờ vận chuyển):</label>
+        <input type="text" id="mCskhOrders" style="font-size:12px;padding:6px 8px;">
       </div>
 
       <label>Số điện thoại / Ghi chú</label>
@@ -907,7 +942,7 @@
 
       <div class="row" style="margin-top:12px;">
         <button type="button" class="btn small hidden" id="mCancelEditBtn">Hủy sửa</button>
-        <button type="button" class="btn primary small" id="mSaveBtn" style="flex:1;">💾 Lưu thành viên</button>
+        <button type="button" class="btn primary small" id="mSaveBtn" style="flex:1;">💾 Lưu thành viên & Phân quyền</button>
       </div>
     </div>
 

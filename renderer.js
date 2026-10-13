@@ -1,6 +1,10 @@
 const DEFAULT_ADS =
   'https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&btm_pre_unit_params=%7B%22btm_origin%22%3A%22sidebar_menu_Qu%E1%BA%A3ng+c%C3%A1o+c%E1%BB%ADa+h%C3%A0ng%22%7D';
 const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=all';
+const DEFAULT_CSKH_CHAT =
+  'https://seller-vn.tiktok.com/chat/inbox/current?oec_seller_id=7494826072462165266&shop_region=VN&lang=en&from=seller_center_navigation_im';
+const DEFAULT_CSKH_ORDERS =
+  'https://seller-vn.tiktok.com/order?order_status[]=1&selected_sort=11&tab=to_ship';
 
 let shops = [];
 let members = [];
@@ -11,6 +15,7 @@ let selectedIds = new Set();
 let proxyStatusMap = new Map();
 let editingId = null;
 let editingMemberId = null;
+let currentDlgLinkMode = 'ads'; // 'ads' | 'cskh'
 let searchQuery = '';
 let activeGroup = '__ALL__';
 let activeMember = 'ALL';
@@ -73,6 +78,25 @@ function getMemberShops(memberId) {
   return shops.filter((s) => Array.isArray(s.memberIds) && s.memberIds.includes(memberId));
 }
 
+function isShopInCskhMode(shop) {
+  // Neu dang dang nhap bang tai khoan nhan vien: dua theo quyen cua nhan vien do
+  if (isMemberMode()) {
+    return (currentUser.member.permMode || 'cskh') === 'cskh';
+  }
+  // Neu Admin dang loc xem theo 1 thanh vien cu the
+  if (activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__') {
+    const m = members.find((x) => x.id === activeMember);
+    if (m) return (m.permMode || 'cskh') === 'cskh';
+  }
+  // Neu gian hang duoc set che do CSKH hoac giao cho thanh vien CSKH
+  if (shop && shop.linkMode === 'cskh') return true;
+  const assigned = getShopMembers(shop);
+  if (assigned.length > 0 && assigned.every((m) => (m.permMode || 'cskh') === 'cskh')) {
+    return true;
+  }
+  return false;
+}
+
 function getVisibleShopsForRole() {
   if (!currentUser) return [];
   if (isMemberMode()) {
@@ -92,8 +116,9 @@ function applyRoleUI() {
 
   if (isMem) {
     const m = currentUser.member;
+    const permLabel = (m.permMode || 'cskh') === 'cskh' ? '🎧 CSKH' : '📈 Ads/Vận hành';
     badge.className = 'user-role-badge member';
-    badge.textContent = `👤 Nhân viên: ${m.name}${m.role ? ' (' + m.role + ')' : ''}`;
+    badge.textContent = `👤 Nhân viên: ${m.name} [${permLabel}]`;
     activeMember = m.id;
   } else {
     badge.className = 'user-role-badge admin';
@@ -337,9 +362,10 @@ function renderMemberFilter() {
 
   for (const m of members) {
     const count = getMemberShops(m.id).length;
+    const pMode = (m.permMode || 'cskh') === 'cskh' ? '🎧 CSKH' : '📈 Ads';
     const opt = document.createElement('option');
     opt.value = m.id;
-    opt.textContent = `👤 ${m.name}${m.role ? ' [' + m.role + ']' : ''} (${count} gian)`;
+    opt.textContent = `👤 ${m.name} [${pMode}] (${count} gian)`;
     sel.appendChild(opt);
   }
 
@@ -465,6 +491,7 @@ function render() {
   filtered.forEach((s) => {
     const realIndex = shops.findIndex((x) => x.id === s.id);
     const isRunning = runningIds.has(s.id);
+    const useCskhButtons = isShopInCskhMode(s);
 
     const card = document.createElement('div');
     card.className = 'card' + (isRunning ? ' is-running' : '');
@@ -515,12 +542,13 @@ function render() {
       assignedMembers.forEach((m) => {
         const mb = document.createElement('span');
         mb.className = 'badge member-badge';
-        mb.title = `Phụ trách: ${m.name}${m.role ? ' (' + m.role + ')' : ''}`;
+        const pTag = (m.permMode || 'cskh') === 'cskh' ? 'CSKH' : 'Ads';
+        mb.title = `Phụ trách: ${m.name} (${pTag})`;
         const dot = document.createElement('span');
         dot.className = 'member-dot';
         dot.style.background = m.color || '#388bfd';
         const txt = document.createElement('span');
-        txt.textContent = m.name;
+        txt.textContent = `${m.name} • ${pTag}`;
         mb.append(dot, txt);
         if (!isMemberMode()) {
           mb.onclick = () => {
@@ -580,16 +608,32 @@ function render() {
 
     const actions = document.createElement('div');
     actions.className = 'actions';
-    actions.append(
-      mkBtn('GMV Max Ads', '', () => openShop(s, 'ads')),
-      mkBtn('Check đơn', '', () => openShop(s, 'orders'))
-    );
-    const both = mkBtn(
-      isRunning ? '⚡ Đưa cửa sổ lên trước' : 'Mở cả 2',
-      'primary both',
-      () => openShop(s, 'both')
-    );
-    actions.append(both);
+
+    if (useCskhButtons) {
+      // Quyen CSKH: AN 2 nut GMV Max Ads & Check don cu, HIEN 2 nut CSKH & Don hang
+      actions.append(
+        mkBtn('💬 CSKH', '', () => openShop(s, 'cskh_chat'), 'Mở trang Tin nhắn CSKH TikTok Seller'),
+        mkBtn('📦 Đơn hàng', '', () => openShop(s, 'cskh_orders'), 'Mở trang Đơn hàng chờ vận chuyển')
+      );
+      const bothCskh = mkBtn(
+        isRunning ? '⚡ Đưa cửa sổ lên trước' : 'Mở cả 2 (CSKH + Đơn hàng)',
+        'primary both',
+        () => openShop(s, 'cskh_both')
+      );
+      actions.append(bothCskh);
+    } else {
+      // Quyen Ads / Quan tri vien mac dinh
+      actions.append(
+        mkBtn('GMV Max Ads', '', () => openShop(s, 'ads')),
+        mkBtn('Check đơn', '', () => openShop(s, 'orders'))
+      );
+      const bothAds = mkBtn(
+        isRunning ? '⚡ Đưa cửa sổ lên trước' : 'Mở cả 2',
+        'primary both',
+        () => openShop(s, 'both')
+      );
+      actions.append(bothAds);
+    }
 
     if (isRunning) {
       const closeBtn = mkBtn(
@@ -745,7 +789,8 @@ $('openSelectedBtn').onclick = async () => {
   if (!list.length) return;
   toast(`Đang mở lần lượt ${list.length} gian hàng...`);
   for (let i = 0; i < list.length; i++) {
-    await window.api.openShop(list[i].id, 'both');
+    const mode = isShopInCskhMode(list[i]) ? 'cskh_both' : 'both';
+    await window.api.openShop(list[i].id, mode);
     runningIds.add(list[i].id);
     render();
     if (i < list.length - 1) {
@@ -784,6 +829,8 @@ $('importBtn').onclick = async () => {
     if (r.importedMember && r.importedMember.id) {
       currentUser = { roleType: 'member', member: r.importedMember, isAdminPreview: false };
       activeMember = r.importedMember.id;
+      document.body.classList.remove('locked');
+      $('loginOverlay').classList.add('hidden');
       render();
       toast(`Đã nạp gói phân quyền của nhân viên ${r.importedMember.name}!`);
       return;
@@ -809,6 +856,18 @@ function randomColor() {
   const palette = ['#0f9d94', '#e5484d', '#f5a524', '#3e63dd', '#8e4ec6', '#30a46c', '#d6409f', '#12a594'];
   return palette[shops.length % palette.length];
 }
+
+function setDlgLinkMode(mode) {
+  currentDlgLinkMode = mode === 'cskh' ? 'cskh' : 'ads';
+  const isCskh = currentDlgLinkMode === 'cskh';
+  $('fAdsOrdersGroup').classList.toggle('hidden', isCskh);
+  $('fCskhGroup').classList.toggle('hidden', !isCskh);
+  $('dlgModeAdsBtn').classList.toggle('primary', !isCskh);
+  $('dlgModeCskhBtn').classList.toggle('primary', isCskh);
+}
+
+$('dlgModeAdsBtn').onclick = () => setDlgLinkMode('ads');
+$('dlgModeCskhBtn').onclick = () => setDlgLinkMode('cskh');
 
 function renderShopDialogMembers(selectedMemberIds = []) {
   const box = $('fMembersList');
@@ -842,14 +901,21 @@ function renderShopDialogMembers(selectedMemberIds = []) {
     chk.checked = selSet.has(m.id);
     chk.onchange = () => {
       lbl.classList.toggle('checked', chk.checked);
+      // Neu tich chon thanh vien co quyen CSKH -> tu dong chuyen sang tab Link CSKH & Don hang (an GMV Max Ads)
+      const checkedIds = Array.from(box.querySelectorAll('input[type="checkbox"]:checked')).map((c) => c.value);
+      const checkedMembers = members.filter((x) => checkedIds.includes(x.id));
+      if (checkedMembers.some((x) => (x.permMode || 'cskh') === 'cskh')) {
+        setDlgLinkMode('cskh');
+      }
     };
 
     const dot = document.createElement('span');
     dot.className = 'member-dot';
     dot.style.background = m.color || '#388bfd';
 
+    const pTag = (m.permMode || 'cskh') === 'cskh' ? '🎧 CSKH' : '📈 Ads';
     const txt = document.createElement('span');
-    txt.textContent = m.name + (m.role ? ` (${m.role})` : '');
+    txt.textContent = `${m.name} (${pTag})`;
 
     lbl.append(chk, dot, txt);
     box.appendChild(lbl);
@@ -865,6 +931,8 @@ function openDialog(shop, focusProxy = false) {
   $('fProxy').value = shop && shop.proxy ? shop.proxy : '';
   $('fAds').value = shop ? shop.adsUrl || shop.sellerUrl || DEFAULT_ADS : DEFAULT_ADS;
   $('fOrders').value = shop ? shop.ordersUrl || DEFAULT_ORDERS : DEFAULT_ORDERS;
+  $('fCskhChat').value = shop && shop.cskhChatUrl ? shop.cskhChatUrl : DEFAULT_CSKH_CHAT;
+  $('fCskhOrders').value = shop && shop.cskhOrdersUrl ? shop.cskhOrdersUrl : DEFAULT_CSKH_ORDERS;
   $('fColor').value = shop ? shop.color : randomColor();
   $('proxyTestStatus').className = 'proxy-test-status';
   $('proxyTestStatus').textContent = '';
@@ -873,6 +941,11 @@ function openDialog(shop, focusProxy = false) {
     ? shop.memberIds
     : (activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__' ? [activeMember] : []);
   renderShopDialogMembers(preselectedMembers);
+
+  const hasCskhMember = members
+    .filter((m) => preselectedMembers.includes(m.id))
+    .some((m) => (m.permMode || 'cskh') === 'cskh');
+  setDlgLinkMode((shop && shop.linkMode === 'cskh') || hasCskhMember ? 'cskh' : 'ads');
 
   $('dlg').showModal();
   if (focusProxy) {
@@ -902,6 +975,9 @@ $('saveBtn').onclick = async () => {
     proxy: newProxy,
     adsUrl: $('fAds').value.trim() || DEFAULT_ADS,
     ordersUrl: $('fOrders').value.trim() || DEFAULT_ORDERS,
+    cskhChatUrl: $('fCskhChat').value.trim() || DEFAULT_CSKH_CHAT,
+    cskhOrdersUrl: $('fCskhOrders').value.trim() || DEFAULT_CSKH_ORDERS,
+    linkMode: currentDlgLinkMode,
     color: $('fColor').value,
     memberIds: checkedMemberIds
   };
@@ -932,13 +1008,14 @@ $('saveBtn').onclick = async () => {
     toast('Đang khởi động lại Chrome của ' + targetShop.name + ' để áp dụng Proxy mới...');
     await window.api.closeShop(targetShop.id);
     runningIds.delete(targetShop.id);
-    setTimeout(() => openShop(targetShop, 'both'), 400);
+    const mode = isShopInCskhMode(targetShop) ? 'cskh_both' : 'both';
+    setTimeout(() => openShop(targetShop, mode), 400);
   } else {
     toast(editingId ? 'Đã lưu thay đổi!' : 'Đã thêm gian hàng mới!');
   }
 };
 
-// ---- QUAN LY THANH VIEN & PHAN CHIA SHOP ----
+// ---- QUAN LY THANH VIEN & PHAN QUYEN CSKH ----
 function randomMemberColor() {
   const palette = ['#388bfd', '#2ea043', '#d29922', '#a371f7', '#db61a2', '#0f9d94', '#f85149'];
   return palette[members.length % palette.length];
@@ -992,6 +1069,11 @@ $('mName').oninput = () => {
   }
 };
 
+$('mPermMode').onchange = () => {
+  const isCskh = $('mPermMode').value === 'cskh';
+  $('mCskhLinksBox').classList.toggle('hidden', !isCskh);
+};
+
 function resetMemberForm() {
   editingMemberId = null;
   usernameManuallyEdited = false;
@@ -999,10 +1081,13 @@ function resetMemberForm() {
   $('mName').value = '';
   $('mUsername').value = '';
   $('mPassword').value = '123456';
-  $('mRole').value = '';
+  $('mPermMode').value = 'cskh';
+  $('mCskhLinksBox').classList.remove('hidden');
+  $('mCskhChat').value = DEFAULT_CSKH_CHAT;
+  $('mCskhOrders').value = DEFAULT_CSKH_ORDERS;
   $('mPhone').value = '';
   $('mColor').value = randomMemberColor();
-  $('mSaveBtn').textContent = '💾 Lưu thành viên';
+  $('mSaveBtn').textContent = '💾 Lưu thành viên & Phân quyền';
   $('mCancelEditBtn').classList.add('hidden');
   renderMemberShopsChecklist([]);
 }
@@ -1010,11 +1095,14 @@ function resetMemberForm() {
 function startEditMember(m) {
   editingMemberId = m.id;
   usernameManuallyEdited = true;
-  $('memberFormTitle').textContent = '✏️ Sửa & Chia shop: ' + m.name;
+  $('memberFormTitle').textContent = '✏️ Sửa & Phân quyền: ' + m.name;
   $('mName').value = m.name || '';
   $('mUsername').value = m.username || slugUsername(m.name) || '';
   $('mPassword').value = m.password || '123456';
-  $('mRole').value = m.role || '';
+  $('mPermMode').value = m.permMode || 'cskh';
+  $('mCskhLinksBox').classList.toggle('hidden', $('mPermMode').value !== 'cskh');
+  $('mCskhChat').value = m.cskhChatUrl || DEFAULT_CSKH_CHAT;
+  $('mCskhOrders').value = m.cskhOrdersUrl || DEFAULT_CSKH_ORDERS;
   $('mPhone').value = m.phone || '';
   $('mColor').value = m.color || '#388bfd';
   $('mSaveBtn').textContent = '💾 Cập nhật thành viên';
@@ -1032,7 +1120,7 @@ function renderMembersListModal() {
   if (!members.length) {
     box.innerHTML =
       '<div style="text-align:center;color:var(--muted);padding:40px 16px;font-size:13px;border:1px dashed var(--line);border-radius:10px;">' +
-      'Chưa có thành viên nào.<br>Hãy nhập Họ tên, Tài khoản, Mật khẩu ở khung bên trái và tích chọn các gian hàng để tạo tài khoản cho nhân viên.' +
+      'Chưa có thành viên nào.<br>Hãy nhập Họ tên, Tài khoản, Mật khẩu ở khung bên trái, chọn <b>🎧 Quyền CSKH</b> và tích chọn các gian hàng để tạo tài khoản cho nhân viên.' +
       '</div>';
     return;
   }
@@ -1041,6 +1129,7 @@ function renderMembersListModal() {
     const mShops = getMemberShops(m.id);
     const uname = m.username || slugUsername(m.name) || m.name;
     const upass = m.password || '123456';
+    const isCskh = (m.permMode || 'cskh') === 'cskh';
 
     const card = document.createElement('div');
     card.className = 'member-card';
@@ -1062,12 +1151,12 @@ function renderMembersListModal() {
     nameSpan.textContent = m.name;
     nameRow.appendChild(nameSpan);
 
-    if (m.role) {
-      const roleSpan = document.createElement('span');
-      roleSpan.className = 'member-role';
-      roleSpan.textContent = m.role;
-      nameRow.appendChild(roleSpan);
-    }
+    const roleSpan = document.createElement('span');
+    roleSpan.className = 'member-role';
+    roleSpan.style.color = isCskh ? '#56e3d8' : '#79c0ff';
+    roleSpan.style.borderColor = isCskh ? 'rgba(15,157,148,.45)' : 'rgba(56,139,253,.45)';
+    roleSpan.textContent = isCskh ? '🎧 Quyền CSKH (Mở CSKH & Đơn hàng)' : '📈 Quyền Ads & Check đơn';
+    nameRow.appendChild(roleSpan);
 
     const credSpan = document.createElement('span');
     credSpan.className = 'cred-badge';
@@ -1111,9 +1200,9 @@ function renderMembersListModal() {
         activeGroup = '__ALL__';
         $('membersDlg').close();
         render();
-        toast(`👤 Đang xem giao diện của nhân viên ${m.name} (${mShops.length} gian). Bấm "👑 Về lại Admin" ở góc trên để quay lại.`);
+        toast(`👤 Đang xem giao diện của nhân viên ${m.name} (${isCskh ? 'Chế độ CSKH: chỉ hiện nút CSKH & Đơn hàng' : 'Chế độ Ads'}).`);
       },
-      'Chuyển sang đúng màn hình làm việc của nhân viên này (chỉ thấy các shop được giao)'
+      'Chuyển sang đúng màn hình làm việc của nhân viên này'
     );
 
     const openAllMemberBtn = mkBtn(
@@ -1122,9 +1211,10 @@ function renderMembersListModal() {
       async () => {
         if (!mShops.length) return toast(`Thành viên ${m.name} chưa được giao gian nào!`);
         $('membersDlg').close();
-        toast(`Đang mở ${mShops.length} gian của ${m.name}...`);
+        const openMode = isCskh ? 'cskh_both' : 'both';
+        toast(`Đang mở ${mShops.length} gian của ${m.name} (${isCskh ? 'CSKH + Đơn hàng' : 'Ads + Đơn hàng'})...`);
         for (let i = 0; i < mShops.length; i++) {
-          await window.api.openShop(mShops[i].id, 'both');
+          await window.api.openShop(mShops[i].id, openMode);
           runningIds.add(mShops[i].id);
           render();
           if (i < mShops.length - 1) {
@@ -1145,7 +1235,7 @@ function renderMembersListModal() {
           return toast(`Hãy giao ít nhất 1 gian hàng cho ${m.name} trước khi xuất file!`);
         }
         const r = await window.api.exportMemberShops({
-          member: { ...m, username: uname, password: upass },
+          member: { ...m, username: uname, password: upass, permMode: m.permMode || 'cskh' },
           memberName: m.name,
           shops: mShops
         });
@@ -1225,7 +1315,10 @@ $('mSaveBtn').onclick = async () => {
 
   const username = ($('mUsername').value.trim() || slugUsername(name) || 'nv' + (members.length + 1)).toLowerCase();
   const password = $('mPassword').value.trim() || '123456';
-  const role = $('mRole').value.trim();
+  const permMode = $('mPermMode').value || 'cskh';
+  const role = permMode === 'cskh' ? 'CSKH' : 'Ads / Vận hành';
+  const cskhChatUrl = $('mCskhChat').value.trim() || DEFAULT_CSKH_CHAT;
+  const cskhOrdersUrl = $('mCskhOrders').value.trim() || DEFAULT_CSKH_ORDERS;
   const phone = $('mPhone').value.trim();
   const color = $('mColor').value || '#388bfd';
   const checkedShopIds = new Set(
@@ -1236,18 +1329,23 @@ $('mSaveBtn').onclick = async () => {
   if (memberId) {
     const target = members.find((x) => x.id === memberId);
     if (target) {
-      Object.assign(target, { name, username, password, role, phone, color });
+      Object.assign(target, { name, username, password, permMode, role, cskhChatUrl, cskhOrdersUrl, phone, color });
     }
   } else {
     memberId = 'mem_' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
-    members.push({ id: memberId, name, username, password, role, phone, color });
+    members.push({ id: memberId, name, username, password, permMode, role, cskhChatUrl, cskhOrdersUrl, phone, color });
   }
 
-  // Cap nhat danh sach shop duoc giao cho thanh vien nay
+  // Cap nhat danh sach shop duoc giao cho thanh vien nay va gan luon 2 duong link CSKH + Don hang
   shops.forEach((s) => {
     const cur = new Set(Array.isArray(s.memberIds) ? s.memberIds : []);
     if (checkedShopIds.has(s.id)) {
       cur.add(memberId);
+      if (permMode === 'cskh') {
+        s.cskhChatUrl = cskhChatUrl;
+        s.cskhOrdersUrl = cskhOrdersUrl;
+        s.linkMode = 'cskh';
+      }
     } else {
       cur.delete(memberId);
     }
@@ -1262,8 +1360,8 @@ $('mSaveBtn').onclick = async () => {
   render();
   toast(
     wasEdit
-      ? `Đã cập nhật TK "${username}" của ${name} (${checkedShopIds.size} gian)!`
-      : `Đã tạo TK "${username}" (MK: ${password}) cho ${name} và giao ${checkedShopIds.size} gian!`
+      ? `Đã cập nhật TK "${username}" (${role}) và giao ${checkedShopIds.size} gian!`
+      : `Đã tạo TK "${username}" (${role}) và giao ${checkedShopIds.size} gian!`
   );
 };
 
