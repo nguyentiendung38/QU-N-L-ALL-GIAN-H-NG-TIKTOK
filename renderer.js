@@ -346,6 +346,62 @@ if ($('cloudSyncBtn')) {
   };
 }
 
+// ---- KIEM TRA VA CAP NHAT TRUC TIEP (LIVE OTA HOT-UPDATE) ----
+async function checkAndUpdateOta(silent = true) {
+  if (!window.api.checkOtaUpdate) return;
+  const checkBtn = $('otaCheckBtn');
+  if (!silent && checkBtn) {
+    checkBtn.textContent = '⏳ Đang kiểm tra...';
+  }
+  const res = await window.api.checkOtaUpdate();
+  if (res && res.ok) {
+    if (checkBtn) {
+      checkBtn.textContent = res.hasUpdate
+        ? `🔔 Có bản mới v${res.latestVersion}`
+        : `🔄 v${res.currentVersion || '2.1.0'}`;
+    }
+    if (res.hasUpdate) {
+      const banner = $('otaUpdateBanner');
+      if (banner) {
+        $('otaBannerTitle').textContent = `🔔 Đã có bản cập nhật mới (Phiên bản v${res.latestVersion})!`;
+        $('otaBannerNotes').textContent = `Nội dung cập nhật: ${res.notes || 'Bổ sung tính năng mới'} — Bấm cập nhật để áp dụng ngay (không tắt Chrome đang mở).`;
+        banner.classList.remove('hidden');
+      }
+      if (!silent) {
+        toast(`🔔 Phát hiện bản cập nhật mới v${res.latestVersion}! Hãy bấm "⚡ Cập nhật ngay".`);
+      }
+    } else if (!silent) {
+      toast(`✅ Bạn đang sử dụng phiên bản mới nhất (v${res.currentVersion || '2.1.0'})!`);
+    }
+  } else if (!silent) {
+    if (checkBtn) checkBtn.textContent = '🔄 Kiểm tra cập nhật';
+    toast('⚠️ Không kiểm tra được bản cập nhật lúc này.');
+  }
+}
+
+if ($('otaCheckBtn')) {
+  $('otaCheckBtn').onclick = () => checkAndUpdateOta(false);
+}
+if ($('otaDismissBtn')) {
+  $('otaDismissBtn').onclick = () => {
+    $('otaUpdateBanner').classList.add('hidden');
+  };
+}
+if ($('otaApplyBtn')) {
+  $('otaApplyBtn').onclick = async () => {
+    const btn = $('otaApplyBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Đang cập nhật (2s)...';
+    toast('⏳ Đang tải bản cập nhật mới trực tiếp từ hệ thống...');
+    const res = await window.api.applyOtaUpdate();
+    if (!res || !res.ok) {
+      btn.disabled = false;
+      btn.textContent = '⚡ Cập nhật ngay (2s)';
+      toast('❌ Lỗi cập nhật: ' + ((res && res.error) || 'Không tải được file'));
+    }
+  };
+}
+
 function formatProxyBadge(proxy) {
   if (!proxy || !String(proxy).trim()) return '';
   const raw = String(proxy).trim();
@@ -1585,6 +1641,9 @@ $('pickBrowserBtn').onclick = async () => {
   refreshBrowser();
   // Bat buoc luon vao man hinh Dang nhap khi mo app
   showLoginScreen();
+  // Kiem tra ban cap nhat moi (Live OTA) ngay khi mo app va moi 60 giay
+  setTimeout(() => checkAndUpdateOta(true), 1500);
+  setInterval(() => checkAndUpdateOta(true), 60000);
   // Tu dong dong bo Online ngam moi 12 giay giua may Admin va may Nhan vien
   setInterval(() => {
     syncFromCloud(false, true);

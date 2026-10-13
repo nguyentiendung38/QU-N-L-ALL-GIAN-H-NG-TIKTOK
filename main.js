@@ -316,6 +316,115 @@ async function pullFromCloud(force = false) {
   }
 }
 
+// ---- HE THONG TU DONG CAP NHAT CODE TRUC TIEP (LIVE OTA HOT-UPDATE) ----
+const liveAppDir = () => path.join(app.getPath('userData'), 'live_app');
+
+function getActiveAppPath() {
+  const liveDir = liveAppDir();
+  const liveVerFile = path.join(liveDir, 'version.json');
+  const liveIndex = path.join(liveDir, 'index.html');
+  const bundledVerFile = path.join(__dirname, 'version.json');
+
+  if (fs.existsSync(liveIndex) && fs.existsSync(liveVerFile)) {
+    try {
+      const liveVer = readJson(liveVerFile, {});
+      const bundledVer = readJson(bundledVerFile, {});
+      const liveBuild = Number(liveVer.buildNumber) || 0;
+      const bundledBuild = Number(bundledVer.buildNumber) || 0;
+      if (liveBuild >= bundledBuild) {
+        return liveDir;
+      }
+    } catch {}
+  }
+  return __dirname;
+}
+
+function getCurrentVersionInfo() {
+  const activeDir = getActiveAppPath();
+  const ver = readJson(path.join(activeDir, 'version.json'), null);
+  if (ver && ver.version) return ver;
+  return readJson(path.join(__dirname, 'version.json'), {
+    version: '2.1.0',
+    buildNumber: 210,
+    updatedAt: '2026-10-13',
+    notes: 'Bản phát hành chính thức'
+  });
+}
+
+const GITHUB_RAW_BASE =
+  'https://raw.githubusercontent.com/nguyentiendung38/QU-N-L-ALL-GIAN-H-NG-TIKTOK/main';
+
+ipcMain.handle('ota:check', async () => {
+  try {
+    const current = getCurrentVersionInfo();
+    const verUrl = `${GITHUB_RAW_BASE}/version.json?t=${Date.now()}`;
+    const r = await httpsReq(verUrl, 'GET');
+    if (r.status !== 200 || !r.body) {
+      return { ok: false, error: 'Không kết nối được GitHub kiểm tra cập nhật' };
+    }
+    const remote = JSON.parse(r.body);
+    const remoteBuild = Number(remote.buildNumber) || 0;
+    const currentBuild = Number(current.buildNumber) || 0;
+    const hasUpdate = remoteBuild > currentBuild || remote.version !== current.version;
+
+    return {
+      ok: true,
+      hasUpdate,
+      currentVersion: current.version,
+      latestVersion: remote.version,
+      buildNumber: remoteBuild,
+      notes: remote.notes || 'Cập nhật tính năng và cải tiến hệ thống',
+      updatedAt: remote.updatedAt || ''
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('ota:apply', async () => {
+  try {
+    const verUrl = `${GITHUB_RAW_BASE}/version.json?t=${Date.now()}`;
+    const verRes = await httpsReq(verUrl, 'GET');
+    if (verRes.status !== 200 || !verRes.body) {
+      return { ok: false, error: 'Không tải được thông tin phiên bản mới từ GitHub' };
+    }
+    const remote = JSON.parse(verRes.body);
+    const filesToDownload = Array.isArray(remote.files) && remote.files.length
+      ? remote.files
+      : ['index.html', 'renderer.js', 'preload.js', 'version.json'];
+
+    const targetDir = liveAppDir();
+    fs.mkdirSync(targetDir, { recursive: true });
+
+    for (const f of filesToDownload) {
+      const fileUrl = `${GITHUB_RAW_BASE}/${f}?t=${Date.now()}`;
+      const fRes = await httpsReq(fileUrl, 'GET');
+      if (fRes.status === 200 && fRes.body && fRes.body.length > 50) {
+        fs.writeFileSync(path.join(targetDir, f), fRes.body, 'utf8');
+      } else if (f === 'index.html' || f === 'renderer.js') {
+        return { ok: false, error: `Không tải được file ${f} từ GitHub` };
+      }
+    }
+
+    // Sao chep cac file tai nguyen logo/icon sang thu muc live_app
+    try {
+      const logoSrc = path.join(__dirname, 'logo.png');
+      const iconSrc = path.join(__dirname, 'icon.png');
+      if (fs.existsSync(logoSrc)) fs.copyFileSync(logoSrc, path.join(targetDir, 'logo.png'));
+      if (fs.existsSync(iconSrc)) fs.copyFileSync(iconSrc, path.join(targetDir, 'icon.png'));
+    } catch {}
+
+    // Tai lai giao dien cua so voi phien ban moi vua cap nhat
+    if (win && !win.isDestroyed()) {
+      win.loadFile(path.join(targetDir, 'index.html'));
+    }
+
+    return { ok: true, version: remote.version, notes: remote.notes };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // Tim Chrome (hoac Edge neu khong co Chrome). Co the chon tay trong phan cai dat.
 function findBrowser() {
   const s = readJson(settingsFile(), {});
@@ -1397,6 +1506,20 @@ ipcMain.handle('shop:resetProfile', (_e, id) => {
 
 let win;
 function createWindow() {
+  const activeDir = getActiveAppPath();
+  if (activeDir !== __dirname) {
+    try {
+      const logoSrc = path.join(__dirname, 'logo.png');
+      const iconSrc = path.join(__dirname, 'icon.png');
+      if (fs.existsSync(logoSrc)) fs.copyFileSync(logoSrc, path.join(activeDir, 'logo.png'));
+      if (fs.existsSync(iconSrc)) fs.copyFileSync(iconSrc, path.join(activeDir, 'icon.png'));
+    } catch {}
+  }
+
+  const preloadPath = fs.existsSync(path.join(activeDir, 'preload.js'))
+    ? path.join(activeDir, 'preload.js')
+    : path.join(__dirname, 'preload.js');
+
   win = new BrowserWindow({
     width: 1240,
     height: 820,
@@ -1406,7 +1529,7 @@ function createWindow() {
     icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#111418',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
@@ -1414,7 +1537,7 @@ function createWindow() {
     }
   });
   win.setMenuBarVisibility(false);
-  win.loadFile('index.html');
+  win.loadFile(path.join(activeDir, 'index.html'));
 }
 
 app.on('second-instance', () => {

@@ -1,0 +1,12 @@
+{
+  "version": "2.1.0",
+  "buildNumber": 210,
+  "updatedAt": "2026-10-13",
+  "notes": "Đồng bộ Online tự động, Phân quyền CSKH & Vận hành, Tự động cập nhật trực tiếp (Live OTA)",
+  "files": [
+    "index.html",
+    "renderer.js",
+    "preload.js",
+    "version.json"
+  ]
+}

@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('api', {
   saveAuthConfig: (cfg) => ipcRenderer.invoke('auth:save', cfg),
   cloudPull: (force) => ipcRenderer.invoke('cloud:pull', Boolean(force)),
   cloudPush: () => ipcRenderer.invoke('cloud:push'),
+  checkOtaUpdate: () => ipcRenderer.invoke('ota:check'),
+  applyOtaUpdate: () => ipcRenderer.invoke('ota:apply'),
   openShop: (id, which) => ipcRenderer.invoke('shop:open', id, which),
   closeShop: (id) => ipcRenderer.invoke('shop:close', id),
   closeAllShops: () => ipcRenderer.invoke('shops:closeAll'),
