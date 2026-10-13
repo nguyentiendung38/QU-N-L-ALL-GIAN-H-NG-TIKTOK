@@ -87,7 +87,8 @@ function getPermModeLabel(permMode) {
 function getOpenActionForMode(permMode) {
   if (permMode === 'vanhanh') return 'cskh_orders';
   if (permMode === 'cskh') return 'cskh_both';
-  return 'both';
+  if (permMode === 'ads') return 'both';
+  return 'tiktok';
 }
 
 function getShopPermMode(shop) {
@@ -735,38 +736,14 @@ function render() {
     actions.className = 'actions';
 
     if (!isMemberMode()) {
-      // Giao diện Quản trị viên (Admin): TOÀN QUYỀN TẤT CẢ CÁC TÍNH NĂNG!
-      actions.append(
-        mkBtn('GMV Max Ads', '', () => openShop(s, 'ads'), 'Mở tab GMV Max Ads TikTok Seller'),
-        mkBtn('Check đơn', '', () => openShop(s, 'orders'), 'Mở tab Quản lý đơn hàng tổng quan'),
-        mkBtn('💬 CSKH', '', () => openShop(s, 'cskh_chat'), 'Mở tab Tin nhắn CSKH TikTok'),
-        mkBtn('📦 Đơn To Ship', '', () => openShop(s, 'cskh_orders'), 'Mở tab Đơn hàng chờ vận chuyển (To Ship)')
+      // Giao diện Quản trị viên (Admin): 1 nút duy nhất để vào thẳng trang quản lý TikTok Shop!
+      const openBtn = mkBtn(
+        isRunning ? '⚡ Đưa cửa sổ lên trước' : '🚀 Mở TikTok Shop',
+        'primary both',
+        () => openShop(s, 'tiktok'),
+        'Mở trực tiếp trang quản lý TikTok Seller Center'
       );
-      if (isRunning) {
-        actions.append(
-          mkBtn(
-            '⚡ Đưa cửa sổ lên trước',
-            'primary both',
-            () => openShop(s, 'both'),
-            'Đưa cửa sổ Chrome đang chạy lên phía trước'
-          )
-        );
-      } else {
-        actions.append(
-          mkBtn(
-            '🚀 Mở cả 2 Ads',
-            'primary',
-            () => openShop(s, 'both'),
-            'Mở cả 2 tab: GMV Max Ads + Check đơn'
-          ),
-          mkBtn(
-            '🎧 Mở cả 2 CSKH',
-            'success',
-            () => openShop(s, 'cskh_both'),
-            'Mở cả 2 tab: Tin nhắn CSKH + Đơn To Ship'
-          )
-        );
-      }
+      actions.append(openBtn);
     } else if (shopMode === 'vanhanh') {
       // Quyền Vận hành: ẨN GMV Max Ads, ẨN Check đơn cũ, ẨN CSKH -> CHỈ HIỆN 1 nút Đơn hàng (To Ship)
       const vhBtn = mkBtn(
@@ -870,7 +847,10 @@ async function openShop(s, which) {
     }
   }
 
-  const r = await window.api.openShop(s.id, which);
+  let r = await window.api.openShop(s.id, which);
+  if (r && !r.ok && r.error === 'Thieu link de mo') {
+    r = await window.api.openShop(s.id, 'ads');
+  }
   if (r && r.ok) {
     runningIds.add(s.id);
     render();
@@ -1043,121 +1023,15 @@ function randomColor() {
   return palette[shops.length % palette.length];
 }
 
-function setDlgLinkMode(mode) {
-  currentDlgLinkMode = mode === 'vanhanh' ? 'vanhanh' : (mode === 'cskh' ? 'cskh' : 'ads');
-  const isAds = currentDlgLinkMode === 'ads';
-  const isCskh = currentDlgLinkMode === 'cskh';
-  const isVanhanh = currentDlgLinkMode === 'vanhanh';
-
-  $('fAdsOrdersGroup').classList.toggle('hidden', !isAds);
-  $('fCskhGroup').classList.toggle('hidden', isAds);
-
-  if ($('fCskhChatWrap')) {
-    $('fCskhChatWrap').classList.toggle('hidden', isVanhanh);
-  }
-  if ($('fCskhOrdersLabel')) {
-    $('fCskhOrdersLabel').textContent = isVanhanh
-      ? '📦 Đường link Đơn hàng Vận hành (To Ship)'
-      : '📦 Đường link Đơn hàng CSKH (To Ship)';
-  }
-
-  $('dlgModeAdsBtn').classList.toggle('primary', isAds);
-  $('dlgModeCskhBtn').classList.toggle('primary', isCskh);
-  if ($('dlgModeVanhanhBtn')) {
-    $('dlgModeVanhanhBtn').classList.toggle('primary', isVanhanh);
-  }
-}
-
-$('dlgModeAdsBtn').onclick = () => setDlgLinkMode('ads');
-$('dlgModeCskhBtn').onclick = () => setDlgLinkMode('cskh');
-if ($('dlgModeVanhanhBtn')) {
-  $('dlgModeVanhanhBtn').onclick = () => setDlgLinkMode('vanhanh');
-}
-
-function renderShopDialogMembers(selectedMemberIds = []) {
-  const box = $('fMembersList');
-  if (!box) return;
-  box.innerHTML = '';
-
-  if (!members.length) {
-    const emptyMsg = document.createElement('div');
-    emptyMsg.style.cssText = 'font-size:12px;color:var(--muted);padding:4px;';
-    emptyMsg.innerHTML = 'Chưa có thành viên nào. ';
-    const linkBtn = document.createElement('span');
-    linkBtn.style.cssText = 'color:#79c0ff;cursor:pointer;text-decoration:underline;';
-    linkBtn.textContent = '+ Bấm vào đây để tạo thành viên';
-    linkBtn.onclick = () => {
-      $('dlg').close();
-      openMembersDialog();
-    };
-    emptyMsg.appendChild(linkBtn);
-    box.appendChild(emptyMsg);
-    return;
-  }
-
-  const selSet = new Set(selectedMemberIds);
-  members.forEach((m) => {
-    const lbl = document.createElement('label');
-    lbl.className = 'member-check-pill' + (selSet.has(m.id) ? ' checked' : '');
-
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.value = m.id;
-    chk.checked = selSet.has(m.id);
-    chk.onchange = () => {
-      lbl.classList.toggle('checked', chk.checked);
-      const checkedIds = Array.from(box.querySelectorAll('input[type="checkbox"]:checked')).map((c) => c.value);
-      const checkedMembers = members.filter((x) => checkedIds.includes(x.id));
-      if (checkedMembers.some((x) => x.permMode === 'vanhanh') && !checkedMembers.some((x) => x.permMode === 'cskh')) {
-        setDlgLinkMode('vanhanh');
-      } else if (checkedMembers.some((x) => (x.permMode || 'cskh') === 'cskh')) {
-        setDlgLinkMode('cskh');
-      }
-    };
-
-    const dot = document.createElement('span');
-    dot.className = 'member-dot';
-    dot.style.background = m.color || '#388bfd';
-
-    const pTag = getPermModeLabel(m.permMode || 'cskh');
-    const txt = document.createElement('span');
-    txt.textContent = `${m.name} (${pTag})`;
-
-    lbl.append(chk, dot, txt);
-    box.appendChild(lbl);
-  });
-}
-
 function openDialog(shop, focusProxy = false) {
   editingId = shop ? shop.id : null;
   $('dlgTitle').textContent = shop ? 'Sửa gian hàng' : 'Thêm gian hàng';
   $('fName').value = shop ? shop.name : '';
   $('fGroup').value = shop && shop.group ? shop.group : '';
-  $('fNote').value = shop && shop.note ? shop.note : '';
-  $('fProxy').value = shop && shop.proxy ? shop.proxy : '';
-  $('fAds').value = shop ? shop.adsUrl || shop.sellerUrl || DEFAULT_ADS : DEFAULT_ADS;
-  $('fOrders').value = shop ? shop.ordersUrl || DEFAULT_ORDERS : DEFAULT_ORDERS;
-  $('fCskhChat').value = shop && shop.cskhChatUrl ? shop.cskhChatUrl : DEFAULT_CSKH_CHAT;
-  $('fCskhOrders').value = shop && shop.cskhOrdersUrl ? shop.cskhOrdersUrl : DEFAULT_CSKH_ORDERS;
   $('fColor').value = shop ? shop.color : randomColor();
+  $('fProxy').value = shop && shop.proxy ? shop.proxy : '';
   $('proxyTestStatus').className = 'proxy-test-status';
   $('proxyTestStatus').textContent = '';
-
-  const preselectedMembers = shop && Array.isArray(shop.memberIds)
-    ? shop.memberIds
-    : (activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__' ? [activeMember] : []);
-  renderShopDialogMembers(preselectedMembers);
-
-  const preMembers = members.filter((m) => preselectedMembers.includes(m.id));
-  let initialMode = (shop && shop.linkMode) || 'ads';
-  if (!shop || !shop.linkMode) {
-    if (preMembers.some((m) => m.permMode === 'vanhanh') && !preMembers.some((m) => m.permMode === 'cskh')) {
-      initialMode = 'vanhanh';
-    } else if (preMembers.some((m) => (m.permMode || 'cskh') === 'cskh')) {
-      initialMode = 'cskh';
-    }
-  }
-  setDlgLinkMode(initialMode);
 
   $('dlg').showModal();
   if (focusProxy) {
@@ -1176,39 +1050,32 @@ $('saveBtn').onclick = async () => {
   if (!name) return $('fName').focus();
   const newProxy = $('fProxy').value.trim();
 
-  const checkedMemberIds = Array.from(
-    $('fMembersList').querySelectorAll('input[type="checkbox"]:checked')
-  ).map((el) => el.value);
-
-  const data = {
-    name,
-    group: $('fGroup').value.trim(),
-    note: $('fNote').value.trim(),
-    proxy: newProxy,
-    adsUrl: $('fAds').value.trim() || DEFAULT_ADS,
-    ordersUrl: $('fOrders').value.trim() || DEFAULT_ORDERS,
-    cskhChatUrl: $('fCskhChat').value.trim() || DEFAULT_CSKH_CHAT,
-    cskhOrdersUrl: $('fCskhOrders').value.trim() || DEFAULT_CSKH_ORDERS,
-    linkMode: currentDlgLinkMode,
-    color: $('fColor').value,
-    memberIds: checkedMemberIds
-  };
-
   let proxyChangedWhileRunning = false;
   let targetShop = null;
 
   if (editingId) {
     targetShop = shops.find((x) => x.id === editingId);
-    const oldProxy = (targetShop && targetShop.proxy) || '';
+    if (!targetShop) return;
+    const oldProxy = targetShop.proxy || '';
     if (oldProxy !== newProxy) {
       proxyStatusMap.delete(editingId);
       if (runningIds.has(editingId)) {
         proxyChangedWhileRunning = true;
       }
     }
-    Object.assign(targetShop, data);
+    targetShop.name = name;
+    targetShop.group = $('fGroup').value.trim();
+    targetShop.color = $('fColor').value;
+    targetShop.proxy = newProxy;
   } else {
-    targetShop = { id: Date.now().toString(36), ...data };
+    targetShop = {
+      id: Date.now().toString(36),
+      name,
+      group: $('fGroup').value.trim(),
+      color: $('fColor').value,
+      proxy: newProxy,
+      memberIds: []
+    };
     shops.push(targetShop);
   }
 
@@ -1220,7 +1087,7 @@ $('saveBtn').onclick = async () => {
     toast('Đang khởi động lại Chrome của ' + targetShop.name + ' để áp dụng Proxy mới...');
     await window.api.closeShop(targetShop.id);
     runningIds.delete(targetShop.id);
-    const mode = getOpenActionForMode(getShopPermMode(targetShop));
+    const mode = isMemberMode() ? getOpenActionForMode(getShopPermMode(targetShop)) : 'tiktok';
     setTimeout(() => openShop(targetShop, mode), 400);
   } else {
     toast(editingId ? 'Đã lưu thay đổi!' : 'Đã thêm gian hàng mới!');

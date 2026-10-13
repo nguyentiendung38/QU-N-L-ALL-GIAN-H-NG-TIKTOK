@@ -1,8 +1,8 @@
 {
-  "version": "2.1.4",
-  "buildNumber": 214,
+  "version": "2.1.5",
+  "buildNumber": 215,
   "updatedAt": "2026-10-13",
-  "notes": "Admin toan quyen tat ca: day du nut Ads, Check don, CSKH, Don To Ship va Mo ca 2",
+  "notes": "Giao dien Admin gon dep: 1 nut mo thang TikTok Shop, popup sua gon chi giu Ten, Nhom, Mau va Proxy",
   "files": [
     "index.html",
     "renderer.js",

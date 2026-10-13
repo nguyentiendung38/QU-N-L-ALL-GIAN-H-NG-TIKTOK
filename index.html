@@ -868,51 +868,12 @@
       <input type="color" id="fColor" value="#0f9d94">
     </div>
     <div class="full">
-      <label>Thành viên phụ trách gian hàng này (Tích chọn để giao shop)</label>
-      <div class="member-pills-select" id="fMembersList"></div>
-    </div>
-    <div class="full">
-      <label>Ghi chú nhanh (SĐT, Email, Ghi chú nội bộ...)</label>
-      <input type="text" id="fNote" placeholder="VD: Mail: shop1@gmail.com - Kênh chính">
-    </div>
-    <div class="full">
       <label>Proxy riêng (Tùy chọn: IP:Port hoặc IP:Port:User:Pass)</label>
       <div class="proxy-input-row">
         <input type="text" id="fProxy" placeholder="Để trống nếu dùng mạng gốc. VD: 103.1.2.3:8080:user:pass">
         <button type="button" class="btn small" id="testProxyBtn">⚡ Kiểm tra Proxy</button>
       </div>
       <div class="proxy-test-status" id="proxyTestStatus"></div>
-    </div>
-
-    <div class="full" style="margin-top:6px;">
-      <label style="margin-bottom:6px;">Chế độ cấu hình đường dẫn cho gian hàng:</label>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button type="button" class="btn small primary" id="dlgModeAdsBtn" style="flex:1;">📈 Quyền Ads</button>
-        <button type="button" class="btn small" id="dlgModeCskhBtn" style="flex:1;">🎧 Quyền CSKH (2 link)</button>
-        <button type="button" class="btn small" id="dlgModeVanhanhBtn" style="flex:1;">📦 Quyền Vận hành (1 link)</button>
-      </div>
-    </div>
-
-    <div class="full" id="fAdsOrdersGroup">
-      <div>
-        <label>Link GMV Max Ads</label>
-        <input type="text" id="fAds" placeholder="https://seller-vn.tiktok.com/ads-creation/dashboard?...">
-      </div>
-      <div style="margin-top:8px;">
-        <label>Link Check Đơn hàng</label>
-        <input type="text" id="fOrders" placeholder="https://seller-vn.tiktok.com/order?...">
-      </div>
-    </div>
-
-    <div class="full hidden" id="fCskhGroup">
-      <div id="fCskhChatWrap" style="margin-bottom:8px;">
-        <label style="color:#56e3d8;font-weight:600;">💬 Đường link CSKH (Tin nhắn khách hàng)</label>
-        <input type="text" id="fCskhChat" placeholder="https://seller-vn.tiktok.com/chat/inbox/current?...">
-      </div>
-      <div id="fCskhOrdersWrap">
-        <label style="color:#56e3d8;font-weight:600;" id="fCskhOrdersLabel">📦 Đường link Đơn hàng (To Ship)</label>
-        <input type="text" id="fCskhOrders" placeholder="https://seller-vn.tiktok.com/order?order_status[]=1&selected_sort=11&tab=to_ship">
-      </div>
     </div>
   </div>
   <div class="row">

@@ -1472,11 +1472,12 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
   if (!browser) return { ok: false, error: 'NO_BROWSER' };
 
   const urls = [];
+  if (which === 'tiktok' || which === 'seller') urls.push(shop.sellerUrl || 'https://seller-vn.tiktok.com/homepage');
   if (which === 'ads' || which === 'both') urls.push(shop.adsUrl || shop.sellerUrl || DEFAULT_ADS);
   if (which === 'orders' || which === 'both') urls.push(shop.ordersUrl || DEFAULT_ORDERS);
   if (which === 'cskh_chat' || which === 'cskh_both') urls.push(shop.cskhChatUrl || DEFAULT_CSKH_CHAT);
   if (which === 'cskh_orders' || which === 'cskh_both') urls.push(shop.cskhOrdersUrl || DEFAULT_CSKH_ORDERS);
-  if (!urls.length) return { ok: false, error: 'Thieu link de mo' };
+  if (!urls.length) urls.push(shop.sellerUrl || 'https://seller-vn.tiktok.com/homepage');
 
   const dir = path.join(profilesRoot(), safeId(id));
   try {

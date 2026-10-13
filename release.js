@@ -48,7 +48,7 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
     buildNumber: 210,
     updatedAt: '',
     notes: '',
-    files: ['index.html', 'renderer.js', 'preload.js', 'version.json']
+    files: ['main.js', 'index.html', 'renderer.js', 'preload.js', 'version.json']
   };
   try {
     verData = JSON.parse(fs.readFileSync(verFile, 'utf8'));
@@ -82,6 +82,7 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
     notes: verData.notes,
     files: {
       'version.json': fs.readFileSync(verFile, 'utf8'),
+      'main.js': fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8'),
       'index.html': fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'),
       'renderer.js': fs.readFileSync(path.join(__dirname, 'renderer.js'), 'utf8'),
       'preload.js': fs.readFileSync(path.join(__dirname, 'preload.js'), 'utf8')
