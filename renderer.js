@@ -81,12 +81,12 @@ function getMemberShops(memberId) {
 function getPermModeLabel(permMode) {
   if (permMode === 'vanhanh') return '📦 Vận hành';
   if (permMode === 'ads') return '📈 Ads';
-  return '🎧 CSKH';
+  return '💬 CSKH';
 }
 
 function getOpenActionForMode(permMode) {
   if (permMode === 'vanhanh') return 'cskh_orders';
-  if (permMode === 'cskh') return 'cskh_both';
+  if (permMode === 'cskh') return 'cskh_orders';
   if (permMode === 'ads') return 'both';
   return 'tiktok';
 }
@@ -754,17 +754,14 @@ function render() {
       );
       actions.append(vhBtn);
     } else if (shopMode === 'cskh') {
-      // Quyền CSKH: ẨN GMV Max Ads & Check đơn cũ, HIỆN 2 nút CSKH & Đơn hàng
-      actions.append(
-        mkBtn('💬 CSKH', '', () => openShop(s, 'cskh_chat'), 'Mở trang Tin nhắn CSKH TikTok Seller'),
-        mkBtn('📦 Đơn hàng', '', () => openShop(s, 'cskh_orders'), 'Mở trang Đơn hàng chờ vận chuyển')
-      );
-      const bothCskh = mkBtn(
-        isRunning ? '⚡ Đưa cửa sổ lên trước' : '🚀 Mở cả 2 (CSKH + Đơn hàng)',
+      // Quyền CSKH: Chỉ để 1 link check đơn hàng nhưng đặt tên là 💬 CSKH, xóa đường link chat CSKH
+      const cskhBtn = mkBtn(
+        isRunning ? '⚡ Đưa cửa sổ lên trước (💬 CSKH)' : '💬 CSKH',
         'primary both',
-        () => openShop(s, 'cskh_both')
+        () => openShop(s, 'cskh_orders'),
+        'Mở trang Đơn hàng CSKH (To Ship)'
       );
-      actions.append(bothCskh);
+      actions.append(cskhBtn);
     } else {
       // Quyền Ads: HIỆN GMV Max Ads + Check đơn
       actions.append(
@@ -1153,13 +1150,15 @@ function updateMemberPermLinksUI() {
   const isAds = mode === 'ads';
   const isVanhanh = mode === 'vanhanh';
   $('mCskhLinksBox').classList.toggle('hidden', isAds);
-  if ($('mCskhChatRow')) {
-    $('mCskhChatRow').classList.toggle('hidden', isVanhanh);
-  }
   if ($('mPermLinksTitle')) {
     $('mPermLinksTitle').textContent = isVanhanh
-      ? '🔗 Mục hiển thị cho Vận hành (Ẩn Ads & CSKH • Chỉ hiện 📦 Đơn hàng To Ship):'
-      : '🔗 2 Mục hiển thị cho CSKH (Ẩn GMV Max Ads & Check đơn):';
+      ? '🔗 Link mở trang cho nhân viên Vận hành:'
+      : '🔗 Link mở trang cho nhân viên CSKH:';
+  }
+  if ($('mCskhOrdersLabel')) {
+    $('mCskhOrdersLabel').textContent = isVanhanh
+      ? '📦 Link mở Đơn hàng (To Ship):'
+      : '💬 Link mở CSKH (Check đơn hàng To Ship):';
   }
 }
 
@@ -1173,7 +1172,7 @@ function resetMemberForm() {
   $('mUsername').value = '';
   $('mPassword').value = '123456';
   $('mPermMode').value = 'cskh';
-  $('mCskhChat').value = DEFAULT_CSKH_CHAT;
+  if ($('mCskhChat')) $('mCskhChat').value = '';
   $('mCskhOrders').value = DEFAULT_CSKH_ORDERS;
   updateMemberPermLinksUI();
   $('mPhone').value = '';
@@ -1191,7 +1190,7 @@ function startEditMember(m) {
   $('mUsername').value = m.username || slugUsername(m.name) || '';
   $('mPassword').value = m.password || '123456';
   $('mPermMode').value = m.permMode || 'cskh';
-  $('mCskhChat').value = m.cskhChatUrl || DEFAULT_CSKH_CHAT;
+  if ($('mCskhChat')) $('mCskhChat').value = '';
   $('mCskhOrders').value = m.cskhOrdersUrl || DEFAULT_CSKH_ORDERS;
   updateMemberPermLinksUI();
   $('mPhone').value = m.phone || '';
@@ -1251,7 +1250,7 @@ function renderMembersListModal() {
     } else if (pMode === 'cskh') {
       roleSpan.style.color = '#56e3d8';
       roleSpan.style.borderColor = 'rgba(15,157,148,.45)';
-      roleSpan.textContent = '🎧 Quyền CSKH (Mở CSKH & Đơn hàng)';
+      roleSpan.textContent = '💬 Quyền CSKH (Mở Đơn hàng CSKH)';
     } else {
       roleSpan.style.color = '#79c0ff';
       roleSpan.style.borderColor = 'rgba(56,139,253,.45)';
@@ -1305,7 +1304,7 @@ function renderMembersListModal() {
           pMode === 'vanhanh'
             ? 'Chế độ Vận hành: chỉ hiện nút 📦 Đơn hàng To Ship'
             : pMode === 'cskh'
-            ? 'Chế độ CSKH: chỉ hiện nút 💬 CSKH & 📦 Đơn hàng'
+            ? 'Chế độ CSKH: chỉ hiện nút 💬 CSKH (Check đơn hàng)'
             : 'Chế độ Ads';
         toast(`👤 Đang xem giao diện của nhân viên ${m.name} (${modeDesc}).`);
       },
@@ -1418,8 +1417,8 @@ $('mSaveBtn').onclick = async () => {
   const password = $('mPassword').value.trim() || '123456';
   const permMode = $('mPermMode').value || 'cskh';
   const role = permMode === 'vanhanh' ? 'Vận hành' : (permMode === 'cskh' ? 'CSKH' : 'Ads');
-  const cskhChatUrl = $('mCskhChat').value.trim() || DEFAULT_CSKH_CHAT;
   const cskhOrdersUrl = $('mCskhOrders').value.trim() || DEFAULT_CSKH_ORDERS;
+  const cskhChatUrl = ($('mCskhChat') && $('mCskhChat').value.trim()) || cskhOrdersUrl;
   const phone = $('mPhone').value.trim();
   const color = $('mColor').value || '#388bfd';
   const checkedShopIds = new Set(

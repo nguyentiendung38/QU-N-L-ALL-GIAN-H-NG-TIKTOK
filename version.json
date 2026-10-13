@@ -1,8 +1,8 @@
 {
-  "version": "2.1.5",
-  "buildNumber": 215,
+  "version": "2.1.6",
+  "buildNumber": 216,
   "updatedAt": "2026-10-13",
-  "notes": "Giao dien Admin gon dep: 1 nut mo thang TikTok Shop, popup sua gon chi giu Ten, Nhom, Mau va Proxy",
+  "notes": "CSKH: 1 nut CSKH duy nhat mo trang Check don hang To Ship, xoa link chat CSKH",
   "files": [
     "index.html",
     "renderer.js",
