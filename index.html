@@ -5,94 +5,460 @@
 <title>186 HOME - TikTok MultiShop</title>
 <link rel="icon" type="image/png" href="icon.png">
 <style>
-  :root { --bg:#111418; --panel:#1a1e24; --line:#2a2f37; --text:#e8eaed; --muted:#8e959e; --teal:#0f9d94; }
+  :root {
+    --bg: #0f1216;
+    --panel: #181c22;
+    --panel-hover: #1e232b;
+    --line: #282e38;
+    --text: #eaecef;
+    --muted: #8b949e;
+    --teal: #0f9d94;
+    --teal-hover: #13b5aa;
+    --green: #2ea043;
+    --danger: #da3633;
+  }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
 
-  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
-  .brand-card { background: #fff; border-radius: 8px; padding: 6px 12px; display: flex; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
-  .brand-logo { height: 34px; width: auto; display: block; }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .brand-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 5px 10px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  }
+  .brand-logo { height: 32px; width: auto; display: block; }
+  .title-wrap { display: flex; align-items: center; gap: 10px; }
   header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .stats-badge {
+    background: #21262d;
+    border: 1px solid var(--line);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .stats-badge b { color: var(--text); }
+  .stats-badge .open-count { color: #3fb950; font-weight: 600; }
   .spacer { flex: 1; }
 
-  .btn { border: 0; background: #2c333d; color: var(--text); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; }
-  .btn:hover { background: #38414d; }
+  .btn {
+    border: 1px solid transparent;
+    background: #262c36;
+    color: var(--text);
+    padding: 8px 13px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all .15s ease;
+  }
+  .btn:hover:not(:disabled) { background: #323946; }
   .btn.primary { background: var(--teal); color: #fff; font-weight: 600; }
-  .btn.primary:hover { background: #12b3a9; }
-  .btn.danger:hover { background: #8a2c2c; }
-  .btn.small { padding: 5px 9px; font-size: 12px; }
-  .btn:disabled { opacity: .3; cursor: not-allowed; }
+  .btn.primary:hover:not(:disabled) { background: var(--teal-hover); }
+  .btn.success { background: rgba(46,160,67,.18); border-color: rgba(46,160,67,.45); color: #56d364; font-weight: 600; }
+  .btn.success:hover:not(:disabled) { background: rgba(46,160,67,.28); }
+  .btn.danger:hover:not(:disabled) { background: #8a2c2c; color: #fff; }
+  .btn.danger-outline { background: rgba(218,54,51,.14); border-color: rgba(218,54,51,.4); color: #ff7b72; }
+  .btn.danger-outline:hover:not(:disabled) { background: var(--danger); color: #fff; }
+  .btn.small { padding: 5px 9px; font-size: 12px; border-radius: 6px; }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
 
-  main { padding: 20px; }
-  .hint { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 16px; }
-  #notice { background: #3a2a14; border: 1px solid #7a5518; color: #f5d9a3; padding: 12px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; line-height: 1.6; }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: #14181e;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .search-box {
+    position: relative;
+    min-width: 240px;
+    flex: 1;
+    max-width: 360px;
+  }
+  .search-box input {
+    width: 100%;
+    padding: 8px 12px 8px 32px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+  }
+  .search-box input:focus { outline: none; border-color: var(--teal); }
+  .search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 13px;
+    pointer-events: none;
+  }
 
-  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .group-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .tab-pill {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--muted);
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .tab-pill:hover { color: var(--text); border-color: #3b4351; }
+  .tab-pill.active {
+    background: rgba(15,157,148,.18);
+    border-color: var(--teal);
+    color: #39d5cb;
+    font-weight: 600;
+  }
+
+  .batch-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .select-all-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    padding-right: 4px;
+  }
+  .select-all-wrap input { cursor: pointer; accent-color: var(--teal); width: 15px; height: 15px; }
+
+  main { padding: 18px 20px 40px; }
+  #notice {
+    background: #3a2a14;
+    border: 1px solid #7a5518;
+    color: #f5d9a3;
+    padding: 12px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .card:hover { border-color: #38414e; }
+  .card.is-running {
+    border-color: rgba(46,160,67,.55);
+    box-shadow: 0 0 0 1px rgba(46,160,67,.2), 0 6px 20px rgba(0,0,0,.3);
+  }
   .card .bar { height: 5px; }
-  .card .head { display: flex; align-items: center; gap: 12px; padding: 14px 14px 6px; }
-  .avatar { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; flex: none; font-size: 16px; }
-  .card .name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 14px; }
-  .actions .both { grid-column: 1 / -1; padding: 10px 14px; }
-  .tools { display: flex; gap: 6px; padding: 8px 14px 12px; border-top: 1px solid var(--line); margin-top: auto; flex-wrap: wrap; }
+  .card .head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px 6px;
+  }
+  .card-check {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--teal);
+    cursor: pointer;
+    flex: none;
+  }
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #fff;
+    flex: none;
+    font-size: 15px;
+  }
+  .head-info { flex: 1; min-width: 0; }
+  .card .name {
+    font-size: 15px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    flex: none;
+  }
+  .status-pill.running {
+    background: rgba(46,160,67,.16);
+    color: #56d364;
+    border: 1px solid rgba(46,160,67,.35);
+  }
+  .status-pill.running .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #3fb950;
+    box-shadow: 0 0 6px #3fb950;
+  }
+  .status-pill.stopped {
+    background: #21262d;
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+  .status-pill.stopped .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #6e7681;
+  }
 
-  #empty { text-align: center; color: var(--muted); padding: 60px 0; font-size: 15px; line-height: 1.8; }
-  #toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: #2c333d; border: 1px solid #3a414c; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 80vw; }
+  .meta-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 14px 2px;
+    flex-wrap: wrap;
+  }
+  .badge {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: #222730;
+    color: #b1bac4;
+    border: 1px solid #2f3642;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .badge.group-badge {
+    background: rgba(56,139,253,.14);
+    border-color: rgba(56,139,253,.35);
+    color: #79c0ff;
+  }
+  .badge.proxy-badge {
+    background: rgba(163,113,247,.14);
+    border-color: rgba(163,113,247,.35);
+    color: #d2a8ff;
+  }
+  .note-box {
+    margin: 4px 14px 0;
+    padding: 5px 8px;
+    border-radius: 6px;
+    background: #13161b;
+    border: 1px dashed #29303b;
+    color: #9ca3af;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px 14px;
+  }
+  .actions .both { grid-column: 1 / -1; padding: 9px 14px; }
+  .actions .close-chrome-btn { grid-column: 1 / -1; padding: 7px 12px; }
+
+  .tools {
+    display: flex;
+    gap: 6px;
+    padding: 8px 14px 12px;
+    border-top: 1px solid var(--line);
+    margin-top: auto;
+    flex-wrap: wrap;
+  }
+
+  #empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 60px 0;
+    font-size: 15px;
+    line-height: 1.8;
+  }
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    background: #262c36;
+    border: 1px solid #3d4654;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+    max-width: 80vw;
+    z-index: 999;
+    box-shadow: 0 6px 20px rgba(0,0,0,.45);
+  }
   #toast.show { opacity: 1; }
   .hidden { display: none !important; }
 
-  dialog { border: 1px solid #3a414c; background: #1f242b; color: var(--text); border-radius: 12px; padding: 22px; width: 480px; max-width: 94vw; }
-  dialog::backdrop { background: rgba(0,0,0,.6); }
-  dialog h2 { margin: 0 0 14px; font-size: 17px; }
-  label { display: block; font-size: 12px; color: #9aa0a6; margin: 12px 0 4px; }
-  input[type=text] { width: 100%; padding: 9px 10px; border-radius: 6px; border: 1px solid #3a414c; background: #14181d; color: var(--text); font-size: 14px; font-family: inherit; }
-  input[type=color] { width: 60px; height: 34px; border: 0; background: transparent; padding: 0; }
-  .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  dialog {
+    border: 1px solid #3a414c;
+    background: #1c2128;
+    color: var(--text);
+    border-radius: 12px;
+    padding: 22px;
+    width: 520px;
+    max-width: 94vw;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.65); }
+  dialog h2 { margin: 0 0 12px; font-size: 17px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  label { display: block; font-size: 12px; color: #9aa0a6; margin: 10px 0 4px; }
+  input[type=text] {
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 6px;
+    border: 1px solid #3a414c;
+    background: #12161b;
+    color: var(--text);
+    font-size: 13.5px;
+    font-family: inherit;
+  }
+  input[type=text]:focus { outline: none; border-color: var(--teal); }
+  input[type=color] { width: 60px; height: 34px; border: 0; background: transparent; padding: 0; cursor: pointer; }
+  .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
   .mono { font-family: Consolas, monospace; font-size: 12px; color: #cfd3d8; word-break: break-all; }
 </style>
 </head>
 <body>
 <header>
   <div class="brand-card"><img src="logo.png" alt="186 HOME" class="brand-logo"></div>
-  <h1>Quản lý gian hàng TikTok</h1>
+  <div class="title-wrap">
+    <h1>Quản lý gian hàng TikTok</h1>
+    <div class="stats-badge" id="statsBadge">Tổng: <b>0</b> gian • <span class="open-count">🟢 0 đang mở</span></div>
+  </div>
   <div class="spacer"></div>
+  <button class="btn" id="exportBtn" title="Xuất danh sách gian hàng ra file .json để sao lưu hoặc chuyển máy">⬇ Xuất Backup</button>
+  <button class="btn" id="importBtn" title="Nhập danh sách gian hàng từ file .json">⬆ Nhập Backup</button>
   <button class="btn" id="settingsBtn" title="Chọn trình duyệt dùng để mở gian">⚙ Trình duyệt</button>
   <button class="btn primary" id="addBtn">+ Thêm gian hàng</button>
 </header>
 
+<div class="toolbar">
+  <div class="search-box">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="searchInput" placeholder="Tìm tên gian, nhóm, ghi chú, proxy...">
+  </div>
+
+  <div class="group-tabs" id="groupTabs"></div>
+
+  <div class="batch-bar">
+    <label class="select-all-wrap">
+      <input type="checkbox" id="selectAllChk">
+      <span>Chọn tất cả</span>
+    </label>
+    <button class="btn success small" id="openSelectedBtn" disabled>🚀 Mở đã chọn (0)</button>
+    <button class="btn danger-outline small" id="closeAllBtn" disabled>⏹ Đóng tất cả (0)</button>
+  </div>
+</div>
+
 <main>
   <div id="notice" class="hidden"></div>
-  <p class="hint">
-    Bấm <b>Mở cả 2</b> để mở GMV Max + Check đơn hàng của gian đó trong Chrome riêng.
-    Lần đầu mỗi gian: đăng nhập một lần trong cửa sổ Chrome hiện ra, những lần sau tự vào thẳng.
-    Mẹo: trong Chrome của từng gian, đặt <b>màu giao diện riêng</b> (⋮ → Tùy chỉnh Chrome → Màu) để không nhầm gian khi lên camp.
-  </p>
   <div id="grid"></div>
-  <div id="empty" class="hidden">Chưa có gian nào.<br>Bấm “+ Thêm gian hàng” để bắt đầu.</div>
+  <div id="empty" class="hidden">Chưa có gian nào phù hợp.<br>Bấm “+ Thêm gian hàng” để bắt đầu.</div>
 </main>
 
 <div id="toast"></div>
 
 <dialog id="dlg">
   <h2 id="dlgTitle">Thêm gian hàng</h2>
-  <label>Tên gian hàng</label>
-  <input type="text" id="fName" placeholder="VD: Gian A - Mỹ phẩm">
-  <label>Link GMV Max Ads</label>
-  <input type="text" id="fAds" placeholder="https://seller-vn.tiktok.com/ads-creation/dashboard?...">
-  <label>Link Check Đơn hàng</label>
-  <input type="text" id="fOrders" placeholder="https://seller-vn.tiktok.com/order?...">
-  <label>Màu nhận diện</label>
-  <input type="color" id="fColor" value="#0f9d94">
+  <div class="form-grid">
+    <div class="full">
+      <label>Tên gian hàng *</label>
+      <input type="text" id="fName" placeholder="VD: Gian 01 - Mỹ phẩm chính hãng">
+    </div>
+    <div>
+      <label>Nhóm / Tag phân loại</label>
+      <input type="text" id="fGroup" list="groupSuggestions" placeholder="VD: Mỹ phẩm, Gia dụng...">
+      <datalist id="groupSuggestions"></datalist>
+    </div>
+    <div>
+      <label>Màu nhận diện</label>
+      <input type="color" id="fColor" value="#0f9d94">
+    </div>
+    <div class="full">
+      <label>Ghi chú nhanh (SĐT, Email, Người phụ trách...)</label>
+      <input type="text" id="fNote" placeholder="VD: Nhân viên A - 0988xxx - Mail: shop1@gmail.com">
+    </div>
+    <div class="full">
+      <label>Proxy riêng (Tùy chọn: IP:Port hoặc IP:Port:User:Pass)</label>
+      <input type="text" id="fProxy" placeholder="Để trống nếu dùng mạng gốc. VD: 103.1.2.3:8080:user:pass">
+    </div>
+    <div class="full">
+      <label>Link GMV Max Ads</label>
+      <input type="text" id="fAds" placeholder="https://seller-vn.tiktok.com/ads-creation/dashboard?...">
+    </div>
+    <div class="full">
+      <label>Link Check Đơn hàng</label>
+      <input type="text" id="fOrders" placeholder="https://seller-vn.tiktok.com/order?...">
+    </div>
+  </div>
   <div class="row">
     <button class="btn" id="cancelBtn">Hủy</button>
-    <button class="btn primary" id="saveBtn">Lưu</button>
+    <button class="btn primary" id="saveBtn">Lưu gian hàng</button>
   </div>
 </dialog>
 
 <dialog id="settingsDlg">
   <h2>Trình duyệt dùng để mở gian</h2>
-  <p class="hint">Mặc định app tự tìm Google Chrome (nếu không có thì dùng Microsoft Edge).</p>
+  <p style="color: var(--muted); font-size: 13px; margin-top: 0;">Mặc định app tự tìm Google Chrome (nếu không có thì dùng Microsoft Edge).</p>
   <div class="mono" id="browserPath">…</div>
   <div class="row">
     <button class="btn" id="pickBrowserBtn">Chọn file khác…</button>

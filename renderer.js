@@ -3,7 +3,11 @@ const DEFAULT_ADS =
 const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=all';
 
 let shops = [];
+let runningIds = new Set();
+let selectedIds = new Set();
 let editingId = null;
+let searchQuery = '';
+let activeGroup = '__ALL__';
 
 const $ = (id) => document.getElementById(id);
 
@@ -21,9 +25,9 @@ function toast(msg) {
 }
 
 function initials(name) {
-  const words = name.trim().split(/\s+/).filter(Boolean);
+  const words = (name || '').trim().split(/\s+/).filter(Boolean);
   if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
-  return name.trim().slice(0, 2).toUpperCase();
+  return (name || '').trim().slice(0, 2).toUpperCase() || 'SH';
 }
 
 function mkBtn(text, cls, onclick, title) {
@@ -35,46 +39,210 @@ function mkBtn(text, cls, onclick, title) {
   return b;
 }
 
+function formatProxyBadge(proxy) {
+  if (!proxy || !String(proxy).trim()) return '';
+  const raw = String(proxy).trim();
+  try {
+    if (raw.includes('://')) {
+      const u = new URL(raw);
+      return `${u.hostname}:${u.port}`;
+    }
+  } catch {}
+  const parts = raw.split(':');
+  if (parts.length >= 2) return `${parts[0]}:${parts[1]}`;
+  return raw;
+}
+
+function getFilteredShops() {
+  const q = searchQuery.trim().toLowerCase();
+  return shops.filter((s) => {
+    if (activeGroup === '__RUNNING__' && !runningIds.has(s.id)) return false;
+    if (activeGroup !== '__ALL__' && activeGroup !== '__RUNNING__') {
+      if ((s.group || '').trim() !== activeGroup) return false;
+    }
+    if (!q) return true;
+    const hay = [s.name, s.group, s.note, s.proxy].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+function renderGroupTabs() {
+  const wrap = $('groupTabs');
+  wrap.innerHTML = '';
+
+  const groups = Array.from(
+    new Set(shops.map((s) => (s.group || '').trim()).filter(Boolean))
+  );
+
+  const items = [
+    { key: '__ALL__', label: `Tất cả (${shops.length})` },
+    { key: '__RUNNING__', label: `🟢 Đang mở (${runningIds.size})` },
+    ...groups.map((g) => ({
+      key: g,
+      label: `📁 ${g} (${shops.filter((s) => (s.group || '').trim() === g).length})`
+    }))
+  ];
+
+  if (
+    activeGroup !== '__ALL__' &&
+    activeGroup !== '__RUNNING__' &&
+    !groups.includes(activeGroup)
+  ) {
+    activeGroup = '__ALL__';
+  }
+
+  for (const item of items) {
+    const btn = document.createElement('button');
+    btn.className = 'tab-pill' + (activeGroup === item.key ? ' active' : '');
+    btn.textContent = item.label;
+    btn.onclick = () => {
+      activeGroup = item.key;
+      render();
+    };
+    wrap.appendChild(btn);
+  }
+
+  // Cap nhat datalist goi y nhom trong popup Them/Sua
+  const dl = $('groupSuggestions');
+  if (dl) {
+    dl.innerHTML = '';
+    for (const g of groups) {
+      const opt = document.createElement('option');
+      opt.value = g;
+      dl.appendChild(opt);
+    }
+  }
+}
+
+function updateStatsAndBatchBar(filtered) {
+  $('statsBadge').innerHTML =
+    `Tổng: <b>${shops.length}</b> gian • <span class="open-count">🟢 ${runningIds.size} đang mở</span>`;
+
+  // Xoa cac id da bi xoa khoi selectedIds
+  const validIds = new Set(shops.map((s) => s.id));
+  for (const id of Array.from(selectedIds)) {
+    if (!validIds.has(id)) selectedIds.delete(id);
+  }
+
+  const openSelectedBtn = $('openSelectedBtn');
+  openSelectedBtn.textContent = `🚀 Mở đã chọn (${selectedIds.size})`;
+  openSelectedBtn.disabled = selectedIds.size === 0;
+
+  const closeAllBtn = $('closeAllBtn');
+  closeAllBtn.textContent = `⏹ Đóng tất cả (${runningIds.size})`;
+  closeAllBtn.disabled = runningIds.size === 0;
+
+  const selectAllChk = $('selectAllChk');
+  if (filtered.length === 0) {
+    selectAllChk.checked = false;
+    selectAllChk.indeterminate = false;
+  } else {
+    const selectedInFiltered = filtered.filter((s) => selectedIds.has(s.id)).length;
+    selectAllChk.checked = selectedInFiltered === filtered.length;
+    selectAllChk.indeterminate =
+      selectedInFiltered > 0 && selectedInFiltered < filtered.length;
+  }
+}
+
 function render() {
+  renderGroupTabs();
+  const filtered = getFilteredShops();
+  updateStatsAndBatchBar(filtered);
+
   const grid = $('grid');
   grid.innerHTML = '';
-  $('empty').classList.toggle('hidden', shops.length > 0);
+  $('empty').classList.toggle('hidden', filtered.length > 0);
 
-  shops.forEach((s, index) => {
+  filtered.forEach((s) => {
+    const realIndex = shops.findIndex((x) => x.id === s.id);
+    const isRunning = runningIds.has(s.id);
+
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = 'card' + (isRunning ? ' is-running' : '');
 
     const bar = document.createElement('div');
     bar.className = 'bar';
-    bar.style.background = s.color;
+    bar.style.background = s.color || '#0f9d94';
 
     const head = document.createElement('div');
     head.className = 'head';
+
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.className = 'card-check';
+    chk.title = 'Chọn gian này để mở hàng loạt';
+    chk.checked = selectedIds.has(s.id);
+    chk.onchange = () => {
+      if (chk.checked) selectedIds.add(s.id);
+      else selectedIds.delete(s.id);
+      updateStatsAndBatchBar(getFilteredShops());
+    };
+
     const av = document.createElement('div');
     av.className = 'avatar';
-    av.style.background = s.color;
+    av.style.background = s.color || '#0f9d94';
     av.textContent = initials(s.name);
+
+    const headInfo = document.createElement('div');
+    headInfo.className = 'head-info';
     const nm = document.createElement('div');
     nm.className = 'name';
     nm.textContent = s.name;
     nm.title = s.name;
-    head.append(av, nm);
+    headInfo.appendChild(nm);
+
+    const statusPill = document.createElement('div');
+    statusPill.className = 'status-pill ' + (isRunning ? 'running' : 'stopped');
+    statusPill.innerHTML = `<span class="dot"></span><span>${isRunning ? 'Đang mở' : 'Đang đóng'}</span>`;
+
+    head.append(chk, av, headInfo, statusPill);
+
+    // Hang hien thi Group + Proxy
+    const metaRow = document.createElement('div');
+    metaRow.className = 'meta-row';
+    if (s.group && s.group.trim()) {
+      const gb = document.createElement('span');
+      gb.className = 'badge group-badge';
+      gb.textContent = '📁 ' + s.group.trim();
+      metaRow.appendChild(gb);
+    }
+    const proxyShort = formatProxyBadge(s.proxy);
+    if (proxyShort) {
+      const pb = document.createElement('span');
+      pb.className = 'badge proxy-badge';
+      pb.textContent = '🌐 Proxy: ' + proxyShort;
+      pb.title = 'Đang cấu hình Proxy riêng: ' + proxyShort;
+      metaRow.appendChild(pb);
+    }
 
     const actions = document.createElement('div');
     actions.className = 'actions';
     actions.append(
-      mkBtn('GMV Max Ads', '', () => openShop(s, 'ads')),
-      mkBtn('Check đơn', '', () => openShop(s, 'orders'))
+      mkBtn('📊 GMV Max / Ads', '', () => openShop(s, 'ads')),
+      mkBtn('📦 Check đơn', '', () => openShop(s, 'orders'))
     );
-    const both = mkBtn('Mở cả 2', 'primary both', () => openShop(s, 'both'));
+    const both = mkBtn(
+      isRunning ? '⚡ Đưa cửa sổ lên trước' : 'Mở cả 2',
+      'primary both',
+      () => openShop(s, 'both')
+    );
     actions.append(both);
+
+    if (isRunning) {
+      const closeBtn = mkBtn(
+        '⏹ Đóng Chrome gian này',
+        'danger-outline small close-chrome-btn',
+        () => closeSingleShop(s)
+      );
+      actions.append(closeBtn);
+    }
 
     const tools = document.createElement('div');
     tools.className = 'tools';
-    const up = mkBtn('◀', 'small', () => moveShop(index, -1), 'Dời lên trước');
-    const down = mkBtn('▶', 'small', () => moveShop(index, 1), 'Dời ra sau');
-    up.disabled = index === 0;
-    down.disabled = index === shops.length - 1;
+    const up = mkBtn('◀', 'small', () => moveShop(realIndex, -1), 'Dời lên trước');
+    const down = mkBtn('▶', 'small', () => moveShop(realIndex, 1), 'Dời ra sau');
+    up.disabled = realIndex === 0;
+    down.disabled = realIndex === shops.length - 1;
     tools.append(
       up,
       down,
@@ -83,7 +251,16 @@ function render() {
       mkBtn('Xóa gian', 'small danger', () => deleteShop(s))
     );
 
-    card.append(bar, head, actions, tools);
+    card.append(bar, head);
+    if (metaRow.childNodes.length > 0) card.appendChild(metaRow);
+    if (s.note && s.note.trim()) {
+      const noteDiv = document.createElement('div');
+      noteDiv.className = 'note-box';
+      noteDiv.textContent = '📝 ' + s.note.trim();
+      noteDiv.title = s.note.trim();
+      card.appendChild(noteDiv);
+    }
+    card.append(actions, tools);
     grid.appendChild(card);
   });
 }
@@ -91,8 +268,10 @@ function render() {
 async function openShop(s, which) {
   const r = await window.api.openShop(s.id, which);
   if (r && r.ok) {
+    runningIds.add(s.id);
+    render();
     if (r.alreadyOpen) {
-      toast('Cửa sổ ' + s.name + ' đã được mở (đã đưa lên trước)');
+      toast('Cửa sổ ' + s.name + ' đang mở (đã đưa lên trước)');
     } else {
       toast('Đang mở ' + s.name + '…');
     }
@@ -104,6 +283,78 @@ async function openShop(s, which) {
   }
   toast('Không mở được: ' + ((r && r.error) || 'lỗi không rõ'));
 }
+
+async function closeSingleShop(s) {
+  const r = await window.api.closeShop(s.id);
+  if (r && r.ok) {
+    runningIds.delete(s.id);
+    render();
+    toast('Đã đóng Chrome của gian ' + s.name);
+  }
+}
+
+// ---- Tim kiem & Chon hang loat ----
+$('searchInput').oninput = (e) => {
+  searchQuery = e.target.value || '';
+  render();
+};
+
+$('selectAllChk').onchange = (e) => {
+  const filtered = getFilteredShops();
+  if (e.target.checked) {
+    filtered.forEach((s) => selectedIds.add(s.id));
+  } else {
+    filtered.forEach((s) => selectedIds.delete(s.id));
+  }
+  render();
+};
+
+$('openSelectedBtn').onclick = async () => {
+  const list = shops.filter((s) => selectedIds.has(s.id));
+  if (!list.length) return;
+  toast(`Đang mở lần lượt ${list.length} gian hàng...`);
+  for (let i = 0; i < list.length; i++) {
+    await window.api.openShop(list[i].id, 'both');
+    runningIds.add(list[i].id);
+    render();
+    if (i < list.length - 1) {
+      await new Promise((r) => setTimeout(r, 650));
+    }
+  }
+  toast(`Đã mở xong ${list.length} gian hàng!`);
+};
+
+$('closeAllBtn').onclick = async () => {
+  if (!runningIds.size) return;
+  if (!confirm(`Đóng tất cả ${runningIds.size} cửa sổ Chrome đang mở?`)) return;
+  const r = await window.api.closeAllShops();
+  if (r && r.ok) {
+    runningIds.clear();
+    render();
+    toast(`Đã đóng toàn bộ ${r.closedCount || ''} cửa sổ Chrome!`);
+  }
+};
+
+// ---- Xuat / Nhap Backup (.json) ----
+$('exportBtn').onclick = async () => {
+  const r = await window.api.exportShops();
+  if (r && r.ok) {
+    toast(`Đã xuất ${r.count} gian hàng ra file Backup!`);
+  } else if (r && !r.canceled) {
+    toast('Lỗi xuất file: ' + (r.error || 'không rõ'));
+  }
+};
+
+$('importBtn').onclick = async () => {
+  const r = await window.api.importShops();
+  if (r && r.ok) {
+    shops = r.shops || (await window.api.getShops());
+    render();
+    toast(`Đã nhập thành công (Thêm mới: ${r.added}, Cập nhật: ${r.updated})!`);
+  } else if (r && !r.canceled) {
+    toast('Lỗi nhập file: ' + (r.error || 'không rõ'));
+  }
+};
 
 async function moveShop(index, delta) {
   const to = index + delta;
@@ -124,6 +375,9 @@ function openDialog(shop) {
   editingId = shop ? shop.id : null;
   $('dlgTitle').textContent = shop ? 'Sửa gian hàng' : 'Thêm gian hàng';
   $('fName').value = shop ? shop.name : '';
+  $('fGroup').value = shop && shop.group ? shop.group : '';
+  $('fNote').value = shop && shop.note ? shop.note : '';
+  $('fProxy').value = shop && shop.proxy ? shop.proxy : '';
   $('fAds').value = shop ? shop.adsUrl || shop.sellerUrl || DEFAULT_ADS : DEFAULT_ADS;
   $('fOrders').value = shop ? shop.ordersUrl || DEFAULT_ORDERS : DEFAULT_ORDERS;
   $('fColor').value = shop ? shop.color : randomColor();
@@ -138,6 +392,9 @@ $('saveBtn').onclick = async () => {
   if (!name) return $('fName').focus();
   const data = {
     name,
+    group: $('fGroup').value.trim(),
+    note: $('fNote').value.trim(),
+    proxy: $('fProxy').value.trim(),
     adsUrl: $('fAds').value.trim() || DEFAULT_ADS,
     ordersUrl: $('fOrders').value.trim() || DEFAULT_ORDERS,
     color: $('fColor').value
@@ -150,6 +407,7 @@ $('saveBtn').onclick = async () => {
   await persist();
   $('dlg').close();
   render();
+  toast(editingId ? 'Đã lưu thay đổi!' : 'Đã thêm gian hàng mới!');
 };
 
 // ---- Xoa dang nhap / xoa gian ----
@@ -166,6 +424,8 @@ async function deleteShop(s) {
     toast(r.error);
     return;
   }
+  selectedIds.delete(s.id);
+  runningIds.delete(s.id);
   shops = shops.filter((x) => x.id !== s.id);
   await persist();
   render();
@@ -197,6 +457,12 @@ $('pickBrowserBtn').onclick = async () => {
 
 (async function init() {
   shops = await window.api.getShops();
+  const active = await window.api.getRunningShops();
+  runningIds = new Set(active || []);
+  window.api.onRunningChanged((ids) => {
+    runningIds = new Set(ids || []);
+    render();
+  });
   render();
   refreshBrowser();
 })();

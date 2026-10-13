@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { initSecurity } = require('./security');
@@ -89,6 +90,68 @@ ipcMain.handle('shops:save', (_e, shops) => {
   return true;
 });
 
+// Xuat danh sach gian hang ra file JSON (Backup)
+ipcMain.handle('shops:export', async () => {
+  const shops = readShops();
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const r = await dialog.showSaveDialog({
+    title: 'Xuất danh sách gian hàng (Backup)',
+    defaultPath: `tiktok-shops-backup-${dateStr}.json`,
+    filters: [{ name: 'JSON Files', extensions: ['json'] }]
+  });
+  if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+  try {
+    fs.writeFileSync(r.filePath, JSON.stringify(shops, null, 2), 'utf8');
+    return { ok: true, count: shops.length, filePath: r.filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Nhap danh sach gian hang tu file JSON (Restore / Merge)
+ipcMain.handle('shops:import', async () => {
+  const r = await dialog.showOpenDialog({
+    title: 'Nhập danh sách gian hàng từ file JSON',
+    properties: ['openFile'],
+    filters: [{ name: 'JSON Files', extensions: ['json'] }]
+  });
+  if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+  try {
+    const raw = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8'));
+    if (!Array.isArray(raw)) {
+      return { ok: false, error: 'File JSON không hợp lệ (không phải danh sách gian hàng)' };
+    }
+    const current = readShops();
+    let added = 0;
+    let updated = 0;
+    for (const item of raw) {
+      if (!item || typeof item !== 'object' || !item.name) continue;
+      const clean = {
+        id: item.id ? String(item.id) : (Date.now() + Math.floor(Math.random() * 10000)).toString(36),
+        name: String(item.name).trim(),
+        adsUrl: item.adsUrl || item.sellerUrl || DEFAULT_ADS,
+        ordersUrl: item.ordersUrl || DEFAULT_ORDERS,
+        color: item.color || '#0f9d94',
+        group: item.group ? String(item.group).trim() : '',
+        note: item.note ? String(item.note).trim() : '',
+        proxy: item.proxy ? String(item.proxy).trim() : ''
+      };
+      const existingIdx = current.findIndex((x) => x.id === clean.id);
+      if (existingIdx >= 0) {
+        current[existingIdx] = { ...current[existingIdx], ...clean };
+        updated++;
+      } else {
+        current.push(clean);
+        added++;
+      }
+    }
+    writeJson(shopsFile(), current);
+    return { ok: true, shops: current, added, updated };
+  } catch (e) {
+    return { ok: false, error: 'Không đọc được file: ' + e.message };
+  }
+});
+
 ipcMain.handle('browser:get', () => findBrowser());
 ipcMain.handle('browser:pick', async () => {
   const filters = process.platform === 'win32' ? [{ name: 'Chrome / Edge', extensions: ['exe'] }] : [];
@@ -106,10 +169,214 @@ ipcMain.handle('browser:pick', async () => {
 
 // Quan ly cac tien trinh Chrome dang mo theo tung shop
 const runningShops = new Map();
+const proxyForwarders = new Map();
+
+function isProcessAlive(pid) {
+  const p = parseInt(pid, 10);
+  if (!p || p <= 0) return false;
+  try {
+    process.kill(p, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function stopProxyForwarder(shopId) {
+  const srv = proxyForwarders.get(shopId);
+  if (srv) {
+    try {
+      srv.close();
+    } catch {}
+    proxyForwarders.delete(shopId);
+  }
+}
+
+function syncRunningShops() {
+  const shops = readShops();
+  const activeIds = [];
+  for (const s of shops) {
+    const dir = path.join(profilesRoot(), safeId(s.id));
+    const pidFile = path.join(dir, '.chrome_pid');
+    let pid = runningShops.get(s.id);
+    if (!pid && fs.existsSync(pidFile)) {
+      try {
+        const saved = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+        if (saved > 0) pid = saved;
+      } catch {}
+    }
+    if (pid && isProcessAlive(pid)) {
+      runningShops.set(s.id, pid);
+      activeIds.push(s.id);
+    } else {
+      if (runningShops.has(s.id)) runningShops.delete(s.id);
+      stopProxyForwarder(s.id);
+      if (fs.existsSync(pidFile)) {
+        try {
+          fs.unlinkSync(pidFile);
+        } catch {}
+      }
+    }
+  }
+  return activeIds;
+}
+
+let lastRunningSignature = '';
+function notifyRunningChanged(force = false) {
+  const ids = syncRunningShops();
+  const sig = ids.slice().sort().join(',');
+  if (!force && sig === lastRunningSignature) return ids;
+  lastRunningSignature = sig;
+  if (win && !win.isDestroyed()) {
+    try {
+      win.webContents.send('shops:runningChanged', ids);
+    } catch {}
+  }
+  return ids;
+}
+
+ipcMain.handle('shops:running', () => notifyRunningChanged(true));
+
+// Phan tich chuoi Proxy: ho tro IP:Port, IP:Port:User:Pass, http://user:pass@ip:port, socks5://ip:port
+function parseProxyString(raw) {
+  if (!raw || !String(raw).trim()) return null;
+  const str = String(raw).trim();
+
+  try {
+    if (str.includes('://')) {
+      const u = new URL(str);
+      return {
+        protocol: u.protocol.replace(':', '') || 'http',
+        host: u.hostname,
+        port: parseInt(u.port, 10),
+        username: decodeURIComponent(u.username || ''),
+        password: decodeURIComponent(u.password || '')
+      };
+    }
+  } catch {}
+
+  const parts = str.split(':');
+  if (parts.length === 2) {
+    return {
+      protocol: 'http',
+      host: parts[0],
+      port: parseInt(parts[1], 10),
+      username: '',
+      password: ''
+    };
+  }
+  if (parts.length >= 4) {
+    return {
+      protocol: 'http',
+      host: parts[0],
+      port: parseInt(parts[1], 10),
+      username: parts[2],
+      password: parts.slice(3).join(':')
+    };
+  }
+  return null;
+}
+
+// Tao proxy local tu dong dien User/Pass de Chrome khong bao gio hoi popup dang nhap Proxy
+function createAuthenticatedProxyForwarder(shopId, proxyCfg) {
+  return new Promise((resolve) => {
+    stopProxyForwarder(shopId);
+    if (!proxyCfg || !proxyCfg.host || !proxyCfg.port) return resolve(null);
+
+    if (!proxyCfg.username) {
+      const scheme = proxyCfg.protocol === 'socks5' ? 'socks5://' : 'http://';
+      return resolve(`${scheme}${proxyCfg.host}:${proxyCfg.port}`);
+    }
+
+    const authHeader =
+      'Basic ' + Buffer.from(`${proxyCfg.username}:${proxyCfg.password || ''}`).toString('base64');
+
+    const server = http.createServer((clientReq, clientRes) => {
+      const options = {
+        host: proxyCfg.host,
+        port: proxyCfg.port,
+        method: clientReq.method,
+        path: clientReq.url,
+        headers: {
+          ...clientReq.headers,
+          'Proxy-Authorization': authHeader
+        }
+      };
+      const proxyReq = http.request(options, (proxyRes) => {
+        clientRes.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+        proxyRes.pipe(clientRes);
+      });
+      proxyReq.on('error', () => {
+        try {
+          clientRes.writeHead(502);
+          clientRes.end('Proxy Error');
+        } catch {}
+      });
+      clientReq.pipe(proxyReq);
+    });
+
+    server.on('connect', (req, clientSocket, head) => {
+      const upstream = net.connect(proxyCfg.port, proxyCfg.host, () => {
+        const connectReq =
+          `CONNECT ${req.url} HTTP/1.1\r\n` +
+          `Host: ${req.url}\r\n` +
+          `Proxy-Authorization: ${authHeader}\r\n` +
+          `Proxy-Connection: keep-alive\r\n\r\n`;
+        upstream.write(connectReq);
+        if (head && head.length) upstream.write(head);
+
+        let headerBuf = Buffer.alloc(0);
+        const onData = (chunk) => {
+          headerBuf = Buffer.concat([headerBuf, chunk]);
+          const idx = headerBuf.indexOf('\r\n\r\n');
+          if (idx !== -1) {
+            upstream.removeListener('data', onData);
+            const firstLine = headerBuf.slice(0, idx).toString('utf8').split('\r\n')[0];
+            if (firstLine.includes(' 200 ')) {
+              clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+              const rest = headerBuf.slice(idx + 4);
+              if (rest.length) clientSocket.write(rest);
+              upstream.pipe(clientSocket);
+              clientSocket.pipe(upstream);
+            } else {
+              clientSocket.write('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+              clientSocket.destroy();
+              upstream.destroy();
+            }
+          }
+        };
+        upstream.on('data', onData);
+      });
+
+      upstream.on('error', () => {
+        try {
+          clientSocket.destroy();
+        } catch {}
+      });
+      clientSocket.on('error', () => {
+        try {
+          upstream.destroy();
+        } catch {}
+      });
+    });
+
+    server.on('error', () => resolve(`${proxyCfg.host}:${proxyCfg.port}`));
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address();
+      if (addr && addr.port) {
+        proxyForwarders.set(shopId, server);
+        resolve(`http://127.0.0.1:${addr.port}`);
+      } else {
+        resolve(`${proxyCfg.host}:${proxyCfg.port}`);
+      }
+    });
+  });
+}
 
 function focusShopWindow(pid, profileDir) {
   return new Promise((resolve) => {
     const targetPid = parseInt(pid, 10) || 0;
+
     if (process.platform === 'darwin') {
       const escapedDir = (profileDir || '').replace(/(["\\$`])/g, '\\$1');
       const sh = `
@@ -319,6 +586,76 @@ Write-Output "NOT_FOUND"
   });
 }
 
+// Dong cua so Chrome cua 1 gian hang
+function closeShopProcess(id) {
+  return new Promise((resolve) => {
+    const dir = path.join(profilesRoot(), safeId(id));
+    const pidFile = path.join(dir, '.chrome_pid');
+    let pid = runningShops.get(id);
+    if (!pid && fs.existsSync(pidFile)) {
+      try {
+        const saved = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+        if (saved > 0) pid = saved;
+      } catch {}
+    }
+
+    const finish = () => {
+      runningShops.delete(id);
+      stopProxyForwarder(id);
+      try {
+        fs.unlinkSync(pidFile);
+      } catch {}
+      notifyRunningChanged(true);
+      resolve({ ok: true });
+    };
+
+    if (!pid || !isProcessAlive(pid)) {
+      return finish();
+    }
+
+    if (process.platform === 'win32') {
+      const tk = spawn('taskkill', ['/PID', String(pid), '/T'], { windowsHide: true, stdio: 'ignore' });
+      tk.on('close', () => {
+        setTimeout(() => {
+          if (isProcessAlive(pid)) {
+            const tkForce = spawn('taskkill', ['/F', '/PID', String(pid), '/T'], {
+              windowsHide: true,
+              stdio: 'ignore'
+            });
+            tkForce.on('close', finish);
+            tkForce.on('error', finish);
+          } else {
+            finish();
+          }
+        }, 400);
+      });
+      tk.on('error', finish);
+    } else {
+      try {
+        process.kill(pid, 'SIGTERM');
+      } catch {}
+      setTimeout(() => {
+        if (isProcessAlive(pid)) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {}
+        }
+        finish();
+      }, 400);
+    }
+  });
+}
+
+ipcMain.handle('shop:close', (_e, id) => closeShopProcess(id));
+
+ipcMain.handle('shops:closeAll', async () => {
+  const ids = syncRunningShops();
+  for (const id of ids) {
+    await closeShopProcess(id);
+  }
+  return { ok: true, closedCount: ids.length };
+});
+
 const EXTENSION_ID = 'elhkhdcolgkmokglojljlidmahmlnofh';
 let cachedExtDir = null;
 
@@ -509,7 +846,7 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
     try {
       const saved = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
       if (saved > 0) knownPid = saved;
-    } catch { }
+    } catch {}
   }
 
   const extDir = getExtensionDir();
@@ -520,10 +857,11 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
     runningShops.set(id, focusRes.pid);
     try {
       fs.writeFileSync(pidFile, String(focusRes.pid), 'utf8');
-    } catch { }
+    } catch {}
     if (extDir) {
       loadExtensionViaCDP(dir, extDir);
     }
+    notifyRunningChanged(true);
     return { ok: true, alreadyOpen: true };
   }
 
@@ -533,13 +871,26 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
     fs.unlinkSync(path.join(dir, 'DevToolsActivePort'));
   } catch {}
 
-  // Neu chua mo hoac da dong: mo Chrome moi kem extension
+  // Neu chua mo hoac da dong: mo Chrome moi kem extension va Proxy (neu co)
   const args = [
     `--user-data-dir=${dir}`,
     '--no-first-run',
     '--no-default-browser-check',
     '--new-window'
   ];
+
+  if (shop.proxy && String(shop.proxy).trim()) {
+    const parsedProxy = parseProxyString(shop.proxy);
+    if (parsedProxy) {
+      const proxyArg = await createAuthenticatedProxyForwarder(id, parsedProxy);
+      if (proxyArg) {
+        args.push(`--proxy-server=${proxyArg}`);
+      }
+    }
+  } else {
+    stopProxyForwarder(id);
+  }
+
   if (extDir) {
     args.push(
       '--enable-unsafe-extension-debugging',
@@ -562,7 +913,9 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
       runningShops.set(id, child.pid);
       try {
         fs.writeFileSync(pidFile, String(child.pid), 'utf8');
-      } catch { }
+      } catch {}
+
+      notifyRunningChanged(true);
 
       if (extDir) {
         loadExtensionViaCDP(dir, extDir);
@@ -570,9 +923,11 @@ ipcMain.handle('shop:open', async (_e, id, which) => {
 
       child.once('exit', () => {
         runningShops.delete(id);
+        stopProxyForwarder(id);
         try {
           fs.unlinkSync(pidFile);
-        } catch { }
+        } catch {}
+        notifyRunningChanged(true);
       });
 
       child.unref();
@@ -587,6 +942,8 @@ ipcMain.handle('shop:resetProfile', (_e, id) => {
   try {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
     runningShops.delete(id);
+    stopProxyForwarder(id);
+    notifyRunningChanged(true);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: 'Khong xoa duoc. Hay dong cua so Chrome cua gian nay roi thu lai.' };
@@ -596,10 +953,10 @@ ipcMain.handle('shop:resetProfile', (_e, id) => {
 let win;
 function createWindow() {
   win = new BrowserWindow({
-    width: 1180,
-    height: 780,
-    minWidth: 760,
-    minHeight: 520,
+    width: 1240,
+    height: 820,
+    minWidth: 820,
+    minHeight: 560,
     title: '186 HOME - TikTok MultiShop',
     icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#111418',
@@ -624,6 +981,7 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   createWindow();
+  setInterval(() => notifyRunningChanged(false), 2000);
   try {
     const extDir = getExtensionDir();
     const root = profilesRoot();

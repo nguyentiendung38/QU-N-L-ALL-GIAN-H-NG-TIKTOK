@@ -4,7 +4,15 @@ contextBridge.exposeInMainWorld('api', {
   getShops: () => ipcRenderer.invoke('shops:get'),
   saveShops: (shops) => ipcRenderer.invoke('shops:save', shops),
   openShop: (id, which) => ipcRenderer.invoke('shop:open', id, which),
+  closeShop: (id) => ipcRenderer.invoke('shop:close', id),
+  closeAllShops: () => ipcRenderer.invoke('shops:closeAll'),
+  getRunningShops: () => ipcRenderer.invoke('shops:running'),
+  exportShops: () => ipcRenderer.invoke('shops:export'),
+  importShops: () => ipcRenderer.invoke('shops:import'),
   resetProfile: (id) => ipcRenderer.invoke('shop:resetProfile', id),
   getBrowser: () => ipcRenderer.invoke('browser:get'),
-  pickBrowser: () => ipcRenderer.invoke('browser:pick')
+  pickBrowser: () => ipcRenderer.invoke('browser:pick'),
+  onRunningChanged: (cb) => {
+    ipcRenderer.on('shops:runningChanged', (_e, runningIds) => cb(runningIds));
+  }
 });
