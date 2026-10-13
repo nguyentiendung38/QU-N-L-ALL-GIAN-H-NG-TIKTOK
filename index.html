@@ -685,6 +685,11 @@
   }
   #toast.show { opacity: 1; }
   .hidden { display: none !important; }
+  body.locked header,
+  body.locked .toolbar,
+  body.locked main {
+    display: none !important;
+  }
 
   dialog {
     border: 1px solid #3a414c;
@@ -716,10 +721,10 @@
   .mono { font-family: Consolas, monospace; font-size: 12px; color: #cfd3d8; word-break: break-all; }
 </style>
 </head>
-<body>
+<body class="locked">
 
-<!-- MAN HINH DANG NHAP (ADMIN & NHAN VIEN) -->
-<div id="loginOverlay" class="login-overlay hidden">
+<!-- MAN HINH DANG NHAP BAT BUOC KHI MO APP (ADMIN & NHAN VIEN) -->
+<div id="loginOverlay" class="login-overlay">
   <div class="login-card">
     <div class="login-head">
       <div class="brand-card"><img src="logo.png" alt="186 HOME" class="brand-logo"></div>
@@ -730,7 +735,7 @@
     <div id="loginError" class="login-error hidden"></div>
 
     <label>Tài khoản đăng nhập (Username)</label>
-    <input type="text" id="loginUser" placeholder="VD: admin hoặc tên đăng nhập nhân viên">
+    <input type="text" id="loginUser" placeholder="Nhập tài khoản (VD: admin hoặc tên TK nhân viên)">
 
     <label>Mật khẩu (Password)</label>
     <input type="password" id="loginPass" placeholder="Nhập mật khẩu...">
@@ -767,7 +772,7 @@
   <button class="btn" id="importBtn" title="Nhập danh sách gian hàng từ file .json">⬆ Nhập Backup</button>
   <button class="btn" id="settingsBtn" title="Chọn trình duyệt dùng để mở gian">⚙ Trình duyệt</button>
   <button class="btn primary" id="addBtn">+ Thêm gian hàng</button>
-  <button class="btn danger-outline" id="switchAccountBtn" title="Mở màn hình Đăng nhập để đổi sang tài khoản Nhân viên hoặc khóa máy">🔐 Đổi TK / Đăng xuất</button>
+  <button class="btn danger-outline" id="switchAccountBtn" title="Đăng xuất và quay về màn hình Đăng nhập">🚪 Đăng xuất</button>
 </header>
 
 <div class="toolbar">
@@ -852,16 +857,12 @@
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
     <h2 style="margin:0;">👥 Quản lý thành viên & Cấp tài khoản đăng nhập</h2>
     <div style="display:flex;align-items:center;gap:10px;">
-      <label style="margin:0;display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12.5px;color:#cfd3d8;">
-        <input type="checkbox" id="requireLoginChk" style="accent-color:var(--teal);width:15px;height:15px;">
-        <span>🔒 Bắt buộc đăng nhập khi mở app</span>
-      </label>
-      <button class="btn small" id="changeAdminPassBtn" title="Đổi tài khoản / mật khẩu của Quản trị viên">🔑 Đổi MK Admin</button>
+      <button class="btn small" id="changeAdminPassBtn" title="Đổi tài khoản / mật khẩu của Quản trị viên">🔑 Đổi TK/MK Admin</button>
       <button class="btn small" id="closeMembersDlgBtn">✕ Đóng</button>
     </div>
   </div>
   <p style="color: var(--muted); font-size: 12.5px; margin: 6px 0 12px;">
-    Cấp <b>Tài khoản & Mật khẩu</b> cho từng nhân viên và tích chọn các shop giao cho họ. Nhân viên bấm nút <b>🔐 Đổi TK / Đăng xuất</b> ở góc phải trên cùng (hoặc mở app lên) để đăng nhập vào giao diện riêng chỉ hiện các shop được giao!
+    Khi mở phần mềm, hệ thống luôn bắt buộc đăng nhập. Cấp <b>Tài khoản & Mật khẩu</b> cho từng nhân viên và tích chọn các shop giao cho họ: đăng nhập tài khoản Admin sẽ vào giao diện Quản trị viên, đăng nhập tài khoản Nhân viên sẽ vào giao diện Nhân viên (chỉ hiện các shop được giao).
   </p>
 
   <div class="members-layout">

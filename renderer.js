@@ -4,8 +4,8 @@ const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=a
 
 let shops = [];
 let members = [];
-let authConfig = { adminUser: 'admin', adminPass: '123456', requireLogin: false };
-let currentUser = { roleType: 'admin', member: null, isAdminPreview: false };
+let authConfig = { adminUser: 'admin', adminPass: '123456', requireLogin: true };
+let currentUser = null;
 let runningIds = new Set();
 let selectedIds = new Set();
 let proxyStatusMap = new Map();
@@ -60,7 +60,7 @@ function mkBtn(text, cls, onclick, title) {
 }
 
 function isMemberMode() {
-  return currentUser && currentUser.roleType === 'member' && currentUser.member;
+  return Boolean(currentUser && currentUser.roleType === 'member' && currentUser.member);
 }
 
 function getShopMembers(shop) {
@@ -74,6 +74,7 @@ function getMemberShops(memberId) {
 }
 
 function getVisibleShopsForRole() {
+  if (!currentUser) return [];
   if (isMemberMode()) {
     return getMemberShops(currentUser.member.id);
   }
@@ -81,6 +82,11 @@ function getVisibleShopsForRole() {
 }
 
 function applyRoleUI() {
+  if (!currentUser) {
+    document.body.classList.add('locked');
+    return;
+  }
+  document.body.classList.remove('locked');
   const badge = $('currentUserBadge');
   const isMem = isMemberMode();
 
@@ -102,7 +108,7 @@ function applyRoleUI() {
   $('importBtn').textContent = isMem ? '📥 Nạp shop từ Admin' : '⬆ Nhập Backup';
 }
 
-// ---- MAN HINH DANG NHAP (ADMIN & NHAN VIEN) ----
+// ---- MAN HINH DANG NHAP BAT BUOC KHI MO APP (ADMIN & NHAN VIEN) ----
 function renderLoginQuickAccounts() {
   const wrap = $('loginQuickWrap');
   const pills = $('loginQuickPills');
@@ -144,9 +150,12 @@ function renderLoginQuickAccounts() {
 }
 
 function showLoginScreen() {
-  if ($('membersDlg').open) $('membersDlg').close();
-  if ($('dlg').open) $('dlg').close();
-  if ($('settingsDlg').open) $('settingsDlg').close();
+  currentUser = null;
+  document.body.classList.add('locked');
+  if ($('grid')) $('grid').innerHTML = '';
+  if ($('membersDlg') && $('membersDlg').open) $('membersDlg').close();
+  if ($('dlg') && $('dlg').open) $('dlg').close();
+  if ($('settingsDlg') && $('settingsDlg').open) $('settingsDlg').close();
 
   $('loginError').classList.add('hidden');
   $('loginPass').value = '';
@@ -172,6 +181,7 @@ function doLogin() {
   if (u.toLowerCase() === adminU && p === adminP) {
     currentUser = { roleType: 'admin', member: null, isAdminPreview: false };
     activeMember = 'ALL';
+    document.body.classList.remove('locked');
     $('loginOverlay').classList.add('hidden');
     render();
     toast('👑 Đã đăng nhập quyền Quản trị viên (Admin)!');
@@ -190,6 +200,7 @@ function doLogin() {
     currentUser = { roleType: 'member', member: foundMember, isAdminPreview: false };
     activeMember = foundMember.id;
     activeGroup = '__ALL__';
+    document.body.classList.remove('locked');
     $('loginOverlay').classList.add('hidden');
     render();
     const assignedCount = getMemberShops(foundMember.id).length;
@@ -428,6 +439,11 @@ function updateStatsAndBatchBar(filtered) {
 }
 
 function render() {
+  if (!currentUser) {
+    document.body.classList.add('locked');
+    if ($('grid')) $('grid').innerHTML = '';
+    return;
+  }
   applyRoleUI();
   renderMemberFilter();
   renderGroupTabs();
@@ -1010,7 +1026,6 @@ function startEditMember(m) {
 
 function renderMembersListModal() {
   $('membersTotalCount').textContent = String(members.length);
-  $('requireLoginChk').checked = Boolean(authConfig.requireLogin);
   const box = $('membersListBox');
   box.innerHTML = '';
 
@@ -1178,16 +1193,6 @@ $('closeMembersDlgBtn').onclick = () => $('membersDlg').close();
 $('mCancelEditBtn').onclick = () => resetMemberForm();
 $('openLoginFromModalBtn').onclick = () => showLoginScreen();
 
-$('requireLoginChk').onchange = async (e) => {
-  authConfig.requireLogin = Boolean(e.target.checked);
-  await window.api.saveAuthConfig(authConfig);
-  toast(
-    authConfig.requireLogin
-      ? '🔒 Đã BẬT bắt buộc đăng nhập mỗi khi mở phần mềm!'
-      : '🔓 Đã TẮT bắt buộc đăng nhập khi mở phần mềm.'
-  );
-};
-
 $('changeAdminPassBtn').onclick = async () => {
   const newU = prompt('Nhập tên tài khoản Quản trị viên (Admin):', authConfig.adminUser || 'admin');
   if (!newU || !newU.trim()) return;
@@ -1311,16 +1316,14 @@ $('pickBrowserBtn').onclick = async () => {
 (async function init() {
   shops = await window.api.getShops();
   members = (await window.api.getMembers()) || [];
-  authConfig = (await window.api.getAuthConfig()) || { adminUser: 'admin', adminPass: '123456', requireLogin: false };
+  authConfig = (await window.api.getAuthConfig()) || { adminUser: 'admin', adminPass: '123456', requireLogin: true };
   const active = await window.api.getRunningShops();
   runningIds = new Set(active || []);
   window.api.onRunningChanged((ids) => {
     runningIds = new Set(ids || []);
-    render();
+    if (currentUser) render();
   });
-  render();
   refreshBrowser();
-  if (authConfig.requireLogin) {
-    showLoginScreen();
-  }
+  // Bat buoc luon vao man hinh Dang nhap khi mo app
+  showLoginScreen();
 })();
