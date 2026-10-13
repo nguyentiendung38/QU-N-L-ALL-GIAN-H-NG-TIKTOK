@@ -22,6 +22,7 @@ const DEFAULT_ADS =
 const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=all';
 
 const shopsFile = () => path.join(app.getPath('userData'), 'shops.json');
+const membersFile = () => path.join(app.getPath('userData'), 'members.json');
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 const profilesRoot = () => path.join(app.getPath('userData'), 'profiles');
 
@@ -51,6 +52,11 @@ function readShops() {
     if (Array.isArray(d) && d.length) return d;
   }
   return [];
+}
+
+function readMembers() {
+  const own = readJson(membersFile(), null);
+  return Array.isArray(own) ? own : [];
 }
 
 // Tim Chrome (hoac Edge neu khong co Chrome). Co the chon tay trong phan cai dat.
@@ -90,6 +96,32 @@ ipcMain.handle('shops:save', (_e, shops) => {
   return true;
 });
 
+ipcMain.handle('members:get', () => readMembers());
+ipcMain.handle('members:save', (_e, members) => {
+  writeJson(membersFile(), Array.isArray(members) ? members : []);
+  return true;
+});
+
+// Xuat danh sach gian hang cua 1 thanh vien ra file JSON de gui cho nhan vien do
+ipcMain.handle('shops:exportMember', async (_e, payload) => {
+  const memberName = payload && payload.memberName ? String(payload.memberName).trim() : 'member';
+  const memberShops = payload && Array.isArray(payload.shops) ? payload.shops : [];
+  const safeName = memberName.replace(/[^a-zA-Z0-9_-]/g, '-') || 'member';
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const r = await dialog.showSaveDialog({
+    title: `Xuất danh sách gian hàng cho thành viên: ${memberName}`,
+    defaultPath: `tiktok-shops-${safeName}-${dateStr}.json`,
+    filters: [{ name: 'JSON Files', extensions: ['json'] }]
+  });
+  if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+  try {
+    fs.writeFileSync(r.filePath, JSON.stringify(memberShops, null, 2), 'utf8');
+    return { ok: true, count: memberShops.length, filePath: r.filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // Xuat danh sach gian hang ra file JSON (Backup)
 ipcMain.handle('shops:export', async () => {
   const shops = readShops();
@@ -118,13 +150,14 @@ ipcMain.handle('shops:import', async () => {
   if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
   try {
     const raw = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8'));
-    if (!Array.isArray(raw)) {
+    const list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.shops) ? raw.shops : null);
+    if (!Array.isArray(list)) {
       return { ok: false, error: 'File JSON không hợp lệ (không phải danh sách gian hàng)' };
     }
     const current = readShops();
     let added = 0;
     let updated = 0;
-    for (const item of raw) {
+    for (const item of list) {
       if (!item || typeof item !== 'object' || !item.name) continue;
       const clean = {
         id: item.id ? String(item.id) : (Date.now() + Math.floor(Math.random() * 10000)).toString(36),
@@ -134,7 +167,8 @@ ipcMain.handle('shops:import', async () => {
         color: item.color || '#0f9d94',
         group: item.group ? String(item.group).trim() : '',
         note: item.note ? String(item.note).trim() : '',
-        proxy: item.proxy ? String(item.proxy).trim() : ''
+        proxy: item.proxy ? String(item.proxy).trim() : '',
+        memberIds: Array.isArray(item.memberIds) ? item.memberIds.map(String) : []
       };
       const existingIdx = current.findIndex((x) => x.id === clean.id);
       if (existingIdx >= 0) {

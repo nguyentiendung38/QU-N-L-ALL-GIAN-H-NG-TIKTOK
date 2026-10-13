@@ -311,6 +311,195 @@
     font-weight: 600;
   }
   .badge.proxy-change-btn:hover { background: rgba(245,165,36,.28); }
+  .badge.member-badge {
+    background: rgba(15,157,148,.16);
+    border-color: rgba(15,157,148,.4);
+    color: #56e3d8;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .badge.member-badge:hover { filter: brightness(1.15); }
+  .badge.member-unassigned {
+    background: rgba(139,148,158,.12);
+    border-color: rgba(139,148,158,.3);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .member-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    flex: none;
+  }
+  .member-filter-select {
+    padding: 6px 11px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .member-filter-select:focus { outline: none; border-color: var(--teal); }
+  .btn.members-btn {
+    background: rgba(56,139,253,.16);
+    border-color: rgba(56,139,253,.4);
+    color: #79c0ff;
+    font-weight: 600;
+  }
+  .btn.members-btn:hover:not(:disabled) { background: rgba(56,139,253,.28); }
+
+  .member-pills-select {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #3a414c;
+    background: #12161b;
+    min-height: 40px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .member-check-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid #2f3642;
+    background: #1c2128;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    margin: 0;
+  }
+  .member-check-pill input { accent-color: var(--teal); cursor: pointer; margin: 0; }
+  .member-check-pill.checked {
+    border-color: var(--teal);
+    background: rgba(15,157,148,.18);
+    color: #56e3d8;
+  }
+
+  #membersDlg {
+    width: 820px;
+    max-width: 96vw;
+    max-height: 90vh;
+    padding: 20px 22px;
+  }
+  .members-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 18px;
+    margin-top: 10px;
+  }
+  @media (max-width: 720px) {
+    .members-layout { grid-template-columns: 1fr; }
+  }
+  .member-form-box {
+    background: #14181f;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .member-form-box h3 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: #79c0ff;
+  }
+  .shop-assign-box {
+    margin-top: 6px;
+    border: 1px solid #3a414c;
+    border-radius: 6px;
+    background: #12161b;
+    max-height: 170px;
+    overflow-y: auto;
+    padding: 6px 8px;
+  }
+  .shop-assign-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 4px;
+    border-bottom: 1px solid #1d222b;
+    font-size: 12.5px;
+    color: var(--text);
+    cursor: pointer;
+    margin: 0;
+  }
+  .shop-assign-item:last-child { border-bottom: none; }
+  .shop-assign-item input { accent-color: var(--teal); cursor: pointer; }
+  .members-list-box {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 460px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .member-card {
+    background: #14181f;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .member-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .member-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #fff;
+    font-size: 14px;
+    flex: none;
+  }
+  .member-info { flex: 1; min-width: 0; }
+  .member-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .member-role {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: #222730;
+    color: #9ca3af;
+    border: 1px solid #2f3642;
+    font-weight: 500;
+  }
+  .member-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .member-shops-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .member-shop-tag {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: #1e242d;
+    border: 1px solid #2d3542;
+    color: #cfd3d8;
+  }
+  .member-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    border-top: 1px solid #1f252e;
+    padding-top: 8px;
+  }
   .proxy-input-row { display: flex; gap: 8px; align-items: center; }
   .proxy-input-row input { flex: 1; }
   .proxy-test-status { font-size: 12px; margin-top: 5px; min-height: 18px; }
@@ -413,6 +602,7 @@
     <div class="stats-badge" id="statsBadge">Tổng: <b>0</b> gian • <span class="open-count">🟢 0 đang mở</span></div>
   </div>
   <div class="spacer"></div>
+  <button class="btn members-btn" id="membersBtn" title="Tạo thành viên và phân quyền quản lý gian hàng">👥 Thành viên (0)</button>
   <button class="btn" id="exportBtn" title="Xuất danh sách gian hàng ra file .json để sao lưu hoặc chuyển máy">⬇ Xuất Backup</button>
   <button class="btn" id="importBtn" title="Nhập danh sách gian hàng từ file .json">⬆ Nhập Backup</button>
   <button class="btn" id="settingsBtn" title="Chọn trình duyệt dùng để mở gian">⚙ Trình duyệt</button>
@@ -422,8 +612,12 @@
 <div class="toolbar">
   <div class="search-box">
     <span class="search-icon">🔍</span>
-    <input type="text" id="searchInput" placeholder="Tìm tên gian, nhóm, ghi chú, proxy...">
+    <input type="text" id="searchInput" placeholder="Tìm tên gian, thành viên, nhóm, ghi chú, proxy...">
   </div>
+
+  <select id="memberFilterSelect" class="member-filter-select" title="Lọc gian hàng theo thành viên phụ trách">
+    <option value="ALL">👥 Tất cả thành viên</option>
+  </select>
 
   <div class="group-tabs" id="groupTabs"></div>
 
@@ -463,8 +657,12 @@
       <input type="color" id="fColor" value="#0f9d94">
     </div>
     <div class="full">
-      <label>Ghi chú nhanh (SĐT, Email, Người phụ trách...)</label>
-      <input type="text" id="fNote" placeholder="VD: Nhân viên A - 0988xxx - Mail: shop1@gmail.com">
+      <label>Thành viên phụ trách gian hàng này (Tích chọn để giao shop)</label>
+      <div class="member-pills-select" id="fMembersList"></div>
+    </div>
+    <div class="full">
+      <label>Ghi chú nhanh (SĐT, Email, Ghi chú nội bộ...)</label>
+      <input type="text" id="fNote" placeholder="VD: Mail: shop1@gmail.com - Kênh chính">
     </div>
     <div class="full">
       <label>Proxy riêng (Tùy chọn: IP:Port hoặc IP:Port:User:Pass)</label>
@@ -486,6 +684,59 @@
   <div class="row">
     <button class="btn" id="cancelBtn">Hủy</button>
     <button class="btn primary" id="saveBtn">Lưu gian hàng</button>
+  </div>
+</dialog>
+
+<dialog id="membersDlg">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+    <h2 style="margin:0;">👥 Quản lý thành viên & Phân chia Shop</h2>
+    <button class="btn small" id="closeMembersDlgBtn">✕ Đóng</button>
+  </div>
+  <p style="color: var(--muted); font-size: 12.5px; margin: 4px 0 12px;">
+    Tạo thành viên và tích chọn các gian hàng giao cho họ quản lý. Bạn có thể lọc theo thành viên hoặc <b>Xuất file riêng</b> chỉ chứa các shop của thành viên đó để gửi cho nhân viên nhập vào máy họ.
+  </p>
+
+  <div class="members-layout">
+    <div class="member-form-box">
+      <h3 id="memberFormTitle">+ Tạo thành viên mới</h3>
+      <label>Tên thành viên *</label>
+      <input type="text" id="mName" placeholder="VD: Nguyễn Văn A">
+
+      <div style="display:grid;grid-template-columns:1fr 70px;gap:8px;">
+        <div>
+          <label>Vai trò / Chức vụ</label>
+          <input type="text" id="mRole" placeholder="VD: Vận hành, Ads, Sale...">
+        </div>
+        <div>
+          <label>Màu</label>
+          <input type="color" id="mColor" value="#388bfd">
+        </div>
+      </div>
+
+      <label>Số điện thoại / Ghi chú</label>
+      <input type="text" id="mPhone" placeholder="VD: 0988.xxx.xxx">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+        <label style="margin:0;">Chọn shop giao quản lý (<span id="mSelectedShopCount">0</span>)</label>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn small" id="mSelectAllShopsBtn" style="padding:2px 6px;font-size:11px;">Chọn hết</button>
+          <button type="button" class="btn small" id="mClearAllShopsBtn" style="padding:2px 6px;font-size:11px;">Bỏ chọn</button>
+        </div>
+      </div>
+      <div class="shop-assign-box" id="mShopsChecklist"></div>
+
+      <div class="row" style="margin-top:12px;">
+        <button type="button" class="btn small hidden" id="mCancelEditBtn">Hủy sửa</button>
+        <button type="button" class="btn primary small" id="mSaveBtn" style="flex:1;">💾 Lưu thành viên</button>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#cfd3d8;">
+        Danh sách thành viên (<span id="membersTotalCount">0</span>)
+      </div>
+      <div class="members-list-box" id="membersListBox"></div>
+    </div>
   </div>
 </dialog>
 

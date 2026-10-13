@@ -3,17 +3,24 @@ const DEFAULT_ADS =
 const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=all';
 
 let shops = [];
+let members = [];
 let runningIds = new Set();
 let selectedIds = new Set();
 let proxyStatusMap = new Map();
 let editingId = null;
+let editingMemberId = null;
 let searchQuery = '';
 let activeGroup = '__ALL__';
+let activeMember = 'ALL';
 
 const $ = (id) => document.getElementById(id);
 
 async function persist() {
   await window.api.saveShops(shops);
+}
+
+async function persistMembers() {
+  await window.api.saveMembers(members);
 }
 
 let toastTimer = null;
@@ -38,6 +45,16 @@ function mkBtn(text, cls, onclick, title) {
   if (title) b.title = title;
   b.onclick = onclick;
   return b;
+}
+
+function getShopMembers(shop) {
+  const ids = Array.isArray(shop && shop.memberIds) ? shop.memberIds : [];
+  if (!ids.length) return [];
+  return members.filter((m) => ids.includes(m.id));
+}
+
+function getMemberShops(memberId) {
+  return shops.filter((s) => Array.isArray(s.memberIds) && s.memberIds.includes(memberId));
 }
 
 function formatProxyBadge(proxy) {
@@ -89,11 +106,61 @@ function getFilteredShops() {
     if (activeGroup !== '__ALL__' && activeGroup !== '__RUNNING__') {
       if ((s.group || '').trim() !== activeGroup) return false;
     }
+    const shopMembers = getShopMembers(s);
+    if (activeMember === '__UNASSIGNED__') {
+      if (shopMembers.length > 0) return false;
+    } else if (activeMember !== 'ALL') {
+      if (!shopMembers.some((m) => m.id === activeMember)) return false;
+    }
     if (!q) return true;
-    const hay = [s.name, s.group, s.note, s.proxy].filter(Boolean).join(' ').toLowerCase();
+    const memberNames = shopMembers.map((m) => `${m.name} ${m.role || ''}`).join(' ');
+    const hay = [s.name, s.group, s.note, s.proxy, memberNames].filter(Boolean).join(' ').toLowerCase();
     return hay.includes(q);
   });
 }
+
+function renderMemberFilter() {
+  const sel = $('memberFilterSelect');
+  if (!sel) return;
+
+  const validMemberIds = new Set(members.map((m) => m.id));
+  if (activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__' && !validMemberIds.has(activeMember)) {
+    activeMember = 'ALL';
+  }
+
+  const unassignedCount = shops.filter((s) => getShopMembers(s).length === 0).length;
+  sel.innerHTML = '';
+
+  const optAll = document.createElement('option');
+  optAll.value = 'ALL';
+  optAll.textContent = `👥 Tất cả thành viên (${members.length})`;
+  sel.appendChild(optAll);
+
+  const optUnassigned = document.createElement('option');
+  optUnassigned.value = '__UNASSIGNED__';
+  optUnassigned.textContent = `⚠️ Chưa giao ai (${unassignedCount} gian)`;
+  sel.appendChild(optUnassigned);
+
+  for (const m of members) {
+    const count = getMemberShops(m.id).length;
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = `👤 ${m.name}${m.role ? ' [' + m.role + ']' : ''} (${count} gian)`;
+    sel.appendChild(opt);
+  }
+
+  sel.value = activeMember;
+
+  const membersBtn = $('membersBtn');
+  if (membersBtn) {
+    membersBtn.textContent = `👥 Thành viên (${members.length})`;
+  }
+}
+
+$('memberFilterSelect').onchange = (e) => {
+  activeMember = e.target.value || 'ALL';
+  render();
+};
 
 function renderGroupTabs() {
   const wrap = $('groupTabs');
@@ -172,6 +239,7 @@ function updateStatsAndBatchBar(filtered) {
 }
 
 function render() {
+  renderMemberFilter();
   renderGroupTabs();
   const filtered = getFilteredShops();
   updateStatsAndBatchBar(filtered);
@@ -224,9 +292,37 @@ function render() {
 
     head.append(chk, av, headInfo, statusPill);
 
-    // Hang hien thi Group + Proxy
+    // Hang hien thi Thanh vien + Group + Proxy
     const metaRow = document.createElement('div');
     metaRow.className = 'meta-row';
+
+    const assignedMembers = getShopMembers(s);
+    if (assignedMembers.length > 0) {
+      assignedMembers.forEach((m) => {
+        const mb = document.createElement('span');
+        mb.className = 'badge member-badge';
+        mb.title = `Phụ trách: ${m.name}${m.role ? ' (' + m.role + ')' : ''}. Bấm để lọc các gian của ${m.name}`;
+        const dot = document.createElement('span');
+        dot.className = 'member-dot';
+        dot.style.background = m.color || '#388bfd';
+        const txt = document.createElement('span');
+        txt.textContent = m.name;
+        mb.append(dot, txt);
+        mb.onclick = () => {
+          activeMember = activeMember === m.id ? 'ALL' : m.id;
+          render();
+        };
+        metaRow.appendChild(mb);
+      });
+    } else if (members.length > 0) {
+      const unassignedBadge = document.createElement('span');
+      unassignedBadge.className = 'badge member-unassigned';
+      unassignedBadge.textContent = '👤 + Giao TV';
+      unassignedBadge.title = 'Chưa giao cho thành viên nào. Bấm để gán thành viên quản lý.';
+      unassignedBadge.onclick = () => openDialog(s, false);
+      metaRow.appendChild(unassignedBadge);
+    }
+
     if (s.group && s.group.trim()) {
       const gb = document.createElement('span');
       gb.className = 'badge group-badge';
@@ -269,8 +365,8 @@ function render() {
     const actions = document.createElement('div');
     actions.className = 'actions';
     actions.append(
-      mkBtn('📊 GMV Max / Ads', '', () => openShop(s, 'ads')),
-      mkBtn('📦 Check đơn', '', () => openShop(s, 'orders'))
+      mkBtn('GMV Max Ads', '', () => openShop(s, 'ads')),
+      mkBtn('Check đơn', '', () => openShop(s, 'orders'))
     );
     const both = mkBtn(
       isRunning ? '⚡ Đưa cửa sổ lên trước' : 'Mở cả 2',
@@ -479,10 +575,56 @@ async function moveShop(index, delta) {
   render();
 }
 
-// ---- Them / sua ----
+// ---- Them / sua gian hang ----
 function randomColor() {
   const palette = ['#0f9d94', '#e5484d', '#f5a524', '#3e63dd', '#8e4ec6', '#30a46c', '#d6409f', '#12a594'];
   return palette[shops.length % palette.length];
+}
+
+function renderShopDialogMembers(selectedMemberIds = []) {
+  const box = $('fMembersList');
+  if (!box) return;
+  box.innerHTML = '';
+
+  if (!members.length) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.cssText = 'font-size:12px;color:var(--muted);padding:4px;';
+    emptyMsg.innerHTML = 'Chưa có thành viên nào. ';
+    const linkBtn = document.createElement('span');
+    linkBtn.style.cssText = 'color:#79c0ff;cursor:pointer;text-decoration:underline;';
+    linkBtn.textContent = '+ Bấm vào đây để tạo thành viên';
+    linkBtn.onclick = () => {
+      $('dlg').close();
+      openMembersDialog();
+    };
+    emptyMsg.appendChild(linkBtn);
+    box.appendChild(emptyMsg);
+    return;
+  }
+
+  const selSet = new Set(selectedMemberIds);
+  members.forEach((m) => {
+    const lbl = document.createElement('label');
+    lbl.className = 'member-check-pill' + (selSet.has(m.id) ? ' checked' : '');
+
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.value = m.id;
+    chk.checked = selSet.has(m.id);
+    chk.onchange = () => {
+      lbl.classList.toggle('checked', chk.checked);
+    };
+
+    const dot = document.createElement('span');
+    dot.className = 'member-dot';
+    dot.style.background = m.color || '#388bfd';
+
+    const txt = document.createElement('span');
+    txt.textContent = m.name + (m.role ? ` (${m.role})` : '');
+
+    lbl.append(chk, dot, txt);
+    box.appendChild(lbl);
+  });
 }
 
 function openDialog(shop, focusProxy = false) {
@@ -497,6 +639,12 @@ function openDialog(shop, focusProxy = false) {
   $('fColor').value = shop ? shop.color : randomColor();
   $('proxyTestStatus').className = 'proxy-test-status';
   $('proxyTestStatus').textContent = '';
+
+  const preselectedMembers = shop && Array.isArray(shop.memberIds)
+    ? shop.memberIds
+    : (activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__' ? [activeMember] : []);
+  renderShopDialogMembers(preselectedMembers);
+
   $('dlg').showModal();
   if (focusProxy) {
     setTimeout(() => {
@@ -513,6 +661,11 @@ $('saveBtn').onclick = async () => {
   const name = $('fName').value.trim();
   if (!name) return $('fName').focus();
   const newProxy = $('fProxy').value.trim();
+
+  const checkedMemberIds = Array.from(
+    $('fMembersList').querySelectorAll('input[type="checkbox"]:checked')
+  ).map((el) => el.value);
+
   const data = {
     name,
     group: $('fGroup').value.trim(),
@@ -520,7 +673,8 @@ $('saveBtn').onclick = async () => {
     proxy: newProxy,
     adsUrl: $('fAds').value.trim() || DEFAULT_ADS,
     ordersUrl: $('fOrders').value.trim() || DEFAULT_ORDERS,
-    color: $('fColor').value
+    color: $('fColor').value,
+    memberIds: checkedMemberIds
   };
 
   let proxyChangedWhileRunning = false;
@@ -553,6 +707,289 @@ $('saveBtn').onclick = async () => {
   } else {
     toast(editingId ? 'Đã lưu thay đổi!' : 'Đã thêm gian hàng mới!');
   }
+};
+
+// ---- QUAN LY THANH VIEN & PHAN CHIA SHOP ----
+function randomMemberColor() {
+  const palette = ['#388bfd', '#2ea043', '#d29922', '#a371f7', '#db61a2', '#0f9d94', '#f85149'];
+  return palette[members.length % palette.length];
+}
+
+function updateSelectedShopCountInMemberModal() {
+  const checked = $('mShopsChecklist').querySelectorAll('input[type="checkbox"]:checked').length;
+  $('mSelectedShopCount').textContent = String(checked);
+}
+
+function renderMemberShopsChecklist(assignedShopIds = []) {
+  const box = $('mShopsChecklist');
+  box.innerHTML = '';
+  if (!shops.length) {
+    box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px;">Chưa có gian hàng nào.</div>';
+    $('mSelectedShopCount').textContent = '0';
+    return;
+  }
+  const set = new Set(assignedShopIds);
+  shops.forEach((s) => {
+    const lbl = document.createElement('label');
+    lbl.className = 'shop-assign-item';
+
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.value = s.id;
+    chk.checked = set.has(s.id);
+    chk.onchange = updateSelectedShopCountInMemberModal;
+
+    const dot = document.createElement('span');
+    dot.className = 'member-dot';
+    dot.style.background = s.color || '#0f9d94';
+
+    const txt = document.createElement('span');
+    txt.style.flex = '1';
+    txt.textContent = s.name + (s.group ? ` [${s.group}]` : '');
+
+    lbl.append(chk, dot, txt);
+    box.appendChild(lbl);
+  });
+  updateSelectedShopCountInMemberModal();
+}
+
+function resetMemberForm() {
+  editingMemberId = null;
+  $('memberFormTitle').textContent = '+ Tạo thành viên mới';
+  $('mName').value = '';
+  $('mRole').value = '';
+  $('mPhone').value = '';
+  $('mColor').value = randomMemberColor();
+  $('mSaveBtn').textContent = '💾 Lưu thành viên';
+  $('mCancelEditBtn').classList.add('hidden');
+  renderMemberShopsChecklist([]);
+}
+
+function startEditMember(m) {
+  editingMemberId = m.id;
+  $('memberFormTitle').textContent = '✏️ Sửa & Chia shop: ' + m.name;
+  $('mName').value = m.name || '';
+  $('mRole').value = m.role || '';
+  $('mPhone').value = m.phone || '';
+  $('mColor').value = m.color || '#388bfd';
+  $('mSaveBtn').textContent = '💾 Cập nhật thành viên';
+  $('mCancelEditBtn').classList.remove('hidden');
+  const assignedIds = getMemberShops(m.id).map((s) => s.id);
+  renderMemberShopsChecklist(assignedIds);
+  $('mName').focus();
+}
+
+function renderMembersListModal() {
+  $('membersTotalCount').textContent = String(members.length);
+  const box = $('membersListBox');
+  box.innerHTML = '';
+
+  if (!members.length) {
+    box.innerHTML =
+      '<div style="text-align:center;color:var(--muted);padding:40px 16px;font-size:13px;border:1px dashed var(--line);border-radius:10px;">' +
+      'Chưa có thành viên nào.<br>Hãy nhập tên ở khung bên trái và tích chọn các gian hàng để tạo thành viên đầu tiên.' +
+      '</div>';
+    return;
+  }
+
+  members.forEach((m) => {
+    const mShops = getMemberShops(m.id);
+    const card = document.createElement('div');
+    card.className = 'member-card';
+
+    const head = document.createElement('div');
+    head.className = 'member-card-head';
+
+    const av = document.createElement('div');
+    av.className = 'member-avatar';
+    av.style.background = m.color || '#388bfd';
+    av.textContent = initials(m.name);
+
+    const info = document.createElement('div');
+    info.className = 'member-info';
+
+    const nameRow = document.createElement('div');
+    nameRow.className = 'member-name';
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = m.name;
+    nameRow.appendChild(nameSpan);
+
+    if (m.role) {
+      const roleSpan = document.createElement('span');
+      roleSpan.className = 'member-role';
+      roleSpan.textContent = m.role;
+      nameRow.appendChild(roleSpan);
+    }
+
+    const sub = document.createElement('div');
+    sub.className = 'member-sub';
+    sub.textContent = `Đang quản lý: ${mShops.length} gian hàng` + (m.phone ? ` • 📞 ${m.phone}` : '');
+
+    info.append(nameRow, sub);
+    head.append(av, info);
+    card.appendChild(head);
+
+    if (mShops.length > 0) {
+      const tagsWrap = document.createElement('div');
+      tagsWrap.className = 'member-shops-tags';
+      mShops.forEach((s) => {
+        const tag = document.createElement('span');
+        tag.className = 'member-shop-tag';
+        tag.textContent = '🏪 ' + s.name;
+        tagsWrap.appendChild(tag);
+      });
+      card.appendChild(tagsWrap);
+    } else {
+      const noShop = document.createElement('div');
+      noShop.style.cssText = 'font-size:12px;color:var(--muted);font-style:italic;';
+      noShop.textContent = 'Chưa được giao gian hàng nào';
+      card.appendChild(noShop);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'member-actions';
+
+    const filterBtn = mkBtn(
+      `🔍 Lọc xem (${mShops.length})`,
+      'small',
+      () => {
+        activeMember = m.id;
+        $('membersDlg').close();
+        render();
+        toast(`Đang hiển thị ${mShops.length} gian hàng của ${m.name}`);
+      },
+      'Chỉ hiển thị các gian hàng của thành viên này ngoài màn hình chính'
+    );
+
+    const openAllMemberBtn = mkBtn(
+      `🚀 Mở cả nhóm (${mShops.length})`,
+      'small success',
+      async () => {
+        if (!mShops.length) return toast(`Thành viên ${m.name} chưa được giao gian nào!`);
+        $('membersDlg').close();
+        toast(`Đang mở ${mShops.length} gian của ${m.name}...`);
+        for (let i = 0; i < mShops.length; i++) {
+          await window.api.openShop(mShops[i].id, 'both');
+          runningIds.add(mShops[i].id);
+          render();
+          if (i < mShops.length - 1) {
+            await new Promise((r) => setTimeout(r, 650));
+          }
+        }
+        toast(`Đã mở xong ${mShops.length} gian của ${m.name}!`);
+      },
+      'Mở đồng loạt tất cả các gian của thành viên này'
+    );
+    openAllMemberBtn.disabled = mShops.length === 0;
+
+    const exportMemberBtn = mkBtn(
+      '📤 Xuất file giao việc',
+      'small',
+      async () => {
+        if (!mShops.length) {
+          return toast(`Hãy giao ít nhất 1 gian hàng cho ${m.name} trước khi xuất file!`);
+        }
+        const r = await window.api.exportMemberShops({
+          memberName: m.name,
+          shops: mShops
+        });
+        if (r && r.ok) {
+          toast(`Đã xuất ${r.count} gian của ${m.name} ra file JSON!`);
+        } else if (r && !r.canceled) {
+          toast('Lỗi xuất file: ' + (r.error || 'không rõ'));
+        }
+      },
+      'Xuất file .json chỉ gồm các gian của thành viên này để gửi cho máy nhân viên nhập vào'
+    );
+
+    const editBtn = mkBtn('✏️ Sửa / Chia shop', 'small', () => startEditMember(m));
+
+    const delBtn = mkBtn('🗑 Xóa', 'small danger', async () => {
+      if (!confirm(`Xóa thành viên "${m.name}"?\n(Các gian hàng của họ vẫn được giữ nguyên, chỉ gỡ phân công của thành viên này.)`)) return;
+      members = members.filter((x) => x.id !== m.id);
+      shops.forEach((s) => {
+        if (Array.isArray(s.memberIds)) {
+          s.memberIds = s.memberIds.filter((id) => id !== m.id);
+        }
+      });
+      if (editingMemberId === m.id) resetMemberForm();
+      await persistMembers();
+      await persist();
+      renderMembersListModal();
+      render();
+      toast(`Đã xóa thành viên ${m.name}`);
+    });
+
+    actions.append(filterBtn, openAllMemberBtn, exportMemberBtn, editBtn, delBtn);
+    card.appendChild(actions);
+    box.appendChild(card);
+  });
+}
+
+function openMembersDialog() {
+  resetMemberForm();
+  renderMembersListModal();
+  $('membersDlg').showModal();
+}
+
+$('membersBtn').onclick = () => openMembersDialog();
+$('closeMembersDlgBtn').onclick = () => $('membersDlg').close();
+$('mCancelEditBtn').onclick = () => resetMemberForm();
+
+$('mSelectAllShopsBtn').onclick = () => {
+  $('mShopsChecklist').querySelectorAll('input[type="checkbox"]').forEach((c) => {
+    c.checked = true;
+  });
+  updateSelectedShopCountInMemberModal();
+};
+
+$('mClearAllShopsBtn').onclick = () => {
+  $('mShopsChecklist').querySelectorAll('input[type="checkbox"]').forEach((c) => {
+    c.checked = false;
+  });
+  updateSelectedShopCountInMemberModal();
+};
+
+$('mSaveBtn').onclick = async () => {
+  const name = $('mName').value.trim();
+  if (!name) return $('mName').focus();
+
+  const role = $('mRole').value.trim();
+  const phone = $('mPhone').value.trim();
+  const color = $('mColor').value || '#388bfd';
+  const checkedShopIds = new Set(
+    Array.from($('mShopsChecklist').querySelectorAll('input[type="checkbox"]:checked')).map((c) => c.value)
+  );
+
+  let memberId = editingMemberId;
+  if (memberId) {
+    const target = members.find((x) => x.id === memberId);
+    if (target) {
+      Object.assign(target, { name, role, phone, color });
+    }
+  } else {
+    memberId = 'mem_' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
+    members.push({ id: memberId, name, role, phone, color });
+  }
+
+  // Cap nhat danh sach shop duoc giao cho thanh vien nay
+  shops.forEach((s) => {
+    const cur = new Set(Array.isArray(s.memberIds) ? s.memberIds : []);
+    if (checkedShopIds.has(s.id)) {
+      cur.add(memberId);
+    } else {
+      cur.delete(memberId);
+    }
+    s.memberIds = Array.from(cur);
+  });
+
+  await persistMembers();
+  await persist();
+  const wasEdit = !!editingMemberId;
+  resetMemberForm();
+  renderMembersListModal();
+  render();
+  toast(wasEdit ? `Đã cập nhật thành viên ${name} (${checkedShopIds.size} gian)!` : `Đã tạo thành viên ${name} và giao ${checkedShopIds.size} gian!`);
 };
 
 // ---- Xoa dang nhap / xoa gian ----
@@ -603,6 +1040,7 @@ $('pickBrowserBtn').onclick = async () => {
 
 (async function init() {
   shops = await window.api.getShops();
+  members = (await window.api.getMembers()) || [];
   const active = await window.api.getRunningShops();
   runningIds = new Set(active || []);
   window.api.onRunningChanged((ids) => {
