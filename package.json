@@ -6,6 +6,7 @@
   "author": "186 HOME",
   "scripts": {
     "start": "electron .",
+    "release": "node release.js",
     "build": "electron-builder --win",
     "build:portable": "electron-builder --win portable",
     "build:installer": "electron-builder --win nsis",
