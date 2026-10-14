@@ -167,6 +167,41 @@
     line-height: 1.6;
   }
 
+  .shop-list-section {
+    background: #161b22;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  }
+  .shop-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .shop-list-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #e6edf3;
+    font-size: 13.5px;
+    font-weight: 700;
+  }
+  .shop-list-count {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .shop-list-body {
+    margin-top: 12px;
+  }
+  .shop-list-body.collapsed {
+    display: none;
+  }
+
   #grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
@@ -1108,6 +1143,9 @@
     line-height: 1.5;
     overflow-wrap: anywhere;
   }
+  .dept-shop-name {
+    cursor: help;
+  }
   .dept-member-status-pill {
     padding: 2px 8px;
     border-radius: 999px;
@@ -1292,8 +1330,19 @@
 <main>
   <div id="deptMonitorSection" class="dept-monitor-section admin-only"></div>
   <div id="notice" class="hidden"></div>
-  <div id="grid"></div>
-  <div id="empty" class="hidden">Chưa có gian nào phù hợp.<br>Bấm “+ Thêm gian hàng” để bắt đầu.</div>
+  <section class="shop-list-section" aria-label="Danh sách gian hàng">
+    <div class="shop-list-header">
+      <div class="shop-list-title">
+        <span>🛍️ Danh sách gian hàng</span>
+        <span id="shopListCount" class="shop-list-count"></span>
+      </div>
+      <button type="button" class="dept-toggle-btn" id="shopListToggle">▴ Thu gọn</button>
+    </div>
+    <div id="shopListBody" class="shop-list-body">
+      <div id="grid"></div>
+      <div id="empty" class="hidden">Chưa có gian nào phù hợp.<br>Bấm “+ Thêm gian hàng” để bắt đầu.</div>
+    </div>
+  </section>
 </main>
 
 <div id="toast"></div>

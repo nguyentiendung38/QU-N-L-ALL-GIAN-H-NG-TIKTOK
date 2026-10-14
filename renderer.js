@@ -15,6 +15,9 @@ let closingShopIds = new Set();
 let isDeptMonitorCollapsed = (function () {
   try { return localStorage.getItem('deptMonitorCollapsed') === '1'; } catch { return false; }
 })();
+let isShopListCollapsed = (function () {
+  try { return localStorage.getItem('shopListCollapsed') === '1'; } catch { return false; }
+})();
 let selectedIds = new Set();
 let proxyStatusMap = new Map();
 let editingId = null;
@@ -48,6 +51,16 @@ function initials(name) {
   const words = (name || '').trim().split(/\s+/).filter(Boolean);
   if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
   return (name || '').trim().slice(0, 2).toUpperCase() || 'SH';
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[char]);
 }
 
 function slugUsername(str) {
@@ -392,7 +405,10 @@ function renderDeptMonitor() {
 
         let shopsSub = '';
         if (item.isRunning) {
-          shopsSub = `🟢 Đang mở ${item.runningNames.length} shop: <b>${item.runningNames.join(', ')}</b>`;
+          const shopNames = item.runningNames
+            .map((name) => `<span class="dept-shop-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>`)
+            .join(', ');
+          shopsSub = `🟢 Đang mở ${item.runningNames.length} shop: <b>${shopNames}</b>`;
         } else {
           shopsSub = `⚪ Đã đóng Chrome (Được giao ${item.assignedCount} gian)`;
         }
@@ -1010,6 +1026,24 @@ function render() {
   const filtered = getFilteredShops();
   updateStatsAndBatchBar(filtered);
 
+  const shopListCount = $('shopListCount');
+  if (shopListCount) {
+    shopListCount.textContent = `${filtered.length} gian hàng`;
+  }
+  const shopListBody = $('shopListBody');
+  if (shopListBody) {
+    shopListBody.classList.toggle('collapsed', isShopListCollapsed);
+  }
+  const shopListToggle = $('shopListToggle');
+  if (shopListToggle) {
+    shopListToggle.textContent = isShopListCollapsed ? '▾ Mở rộng danh sách' : '▴ Thu gọn';
+    shopListToggle.onclick = () => {
+      isShopListCollapsed = !isShopListCollapsed;
+      try { localStorage.setItem('shopListCollapsed', isShopListCollapsed ? '1' : '0'); } catch {}
+      render();
+    };
+  }
+
   const grid = $('grid');
   grid.innerHTML = '';
   const emptyEl = $('empty');
@@ -1113,6 +1147,7 @@ function render() {
     nm.className = 'name';
     nm.textContent = s.name;
     nm.title = s.name;
+    nm.setAttribute('aria-label', s.name);
     headInfo.appendChild(nm);
 
     const statusPill = document.createElement('div');
