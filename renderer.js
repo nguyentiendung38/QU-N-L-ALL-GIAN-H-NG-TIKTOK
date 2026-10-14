@@ -158,65 +158,53 @@ function getMyUserName() {
   return (authConfig && authConfig.adminUser) || 'Admin';
 }
 
-let isReportingActive = false;
-let needReportAgain = false;
+let activeReportQueue = Promise.resolve();
 let lastActiveReportWarningAt = 0;
-async function reportMyActiveShops() {
-  if (!currentUser) return { ok: false, error: 'Chưa đăng nhập' };
-  if (isReportingActive) {
-    needReportAgain = true;
-    return { ok: false, queued: true };
-  }
-  isReportingActive = true;
-  needReportAgain = false;
-  let result = { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
-  try {
-    const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
-    const userName = currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName();
-    const role = (isMemberMode() && currentUser.member) ? (currentUser.member.permMode || 'cskh') : 'admin';
-    const shopIds = Array.from(runningIds);
-    result = await window.api.cloudReportActive({
-      userKey,
-      userName,
-      role,
-      shopIds,
-      latestActivity: shopActivityLog.find((event) => event.synced) || null,
-      proxyIssues: getVisibleShopsForRole()
-        .filter((shop) => proxyStatusMap.get(shop.id)?.state === 'die')
-        .map((shop) => shop.id),
-      activityPending: shopActivityLog.filter((event) => !event.synced).length
-    });
-    if (result && result.ok) {
-      activeCloudOk = true;
-      activeCloudError = '';
-    }
-    if (!result || !result.ok) {
-      if (result && result.queued) {
-        return result;
+function reportMyActiveShops() {
+  const reportTask = activeReportQueue.then(async () => {
+    if (!currentUser) return { ok: false, error: 'Chưa đăng nhập' };
+    let result = { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
+    try {
+      const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
+      const userName = currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName();
+      const role = (isMemberMode() && currentUser.member) ? (currentUser.member.permMode || 'cskh') : 'admin';
+      const shopIds = Array.from(runningIds);
+      result = await window.api.cloudReportActive({
+        userKey,
+        userName,
+        role,
+        shopIds,
+        latestActivity: shopActivityLog.find((event) => event.synced) || null,
+        proxyIssues: getVisibleShopsForRole()
+          .filter((shop) => proxyStatusMap.get(shop.id)?.state === 'die')
+          .map((shop) => shop.id),
+        activityPending: shopActivityLog.filter((event) => !event.synced).length
+      });
+      if (result && result.ok) {
+        activeCloudOk = true;
+        activeCloudError = '';
       }
+      if (!result || !result.ok) {
+        activeCloudOk = false;
+        activeCloudError = (result && result.error) || 'Không nhận được phản hồi từ Cloud';
+        const now = Date.now();
+        if (now - lastActiveReportWarningAt >= 30000) {
+          console.warn('Không đồng bộ được trạng thái shop lên Cloud:', (result && result.error) || 'Lỗi không xác định');
+          lastActiveReportWarningAt = now;
+        }
+        result = result || { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
+      }
+    } catch (err) {
       activeCloudOk = false;
-      activeCloudError = (result && result.error) || 'Không nhận được phản hồi từ Cloud';
-      const now = Date.now();
-      if (now - lastActiveReportWarningAt >= 30000) {
-        console.warn('Không đồng bộ được trạng thái shop lên Cloud:', (result && result.error) || 'Lỗi không xác định');
-        lastActiveReportWarningAt = now;
-      }
-      result = result || { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
+      activeCloudError = err.message;
+      console.warn('reportMyActiveShops error:', err);
+      result = { ok: false, error: err.message };
     }
-  } catch (err) {
-    activeCloudOk = false;
-    activeCloudError = err.message;
-    console.warn('reportMyActiveShops error:', err);
-    result = { ok: false, error: err.message };
-  } finally {
-    isReportingActive = false;
-    if (needReportAgain) {
-      needReportAgain = false;
-      setTimeout(reportMyActiveShops, 200);
-    }
-  }
-  renderAdminDashboard();
-  return result;
+    renderAdminDashboard();
+    return result;
+  });
+  activeReportQueue = reportTask.then(() => undefined, () => undefined);
+  return reportTask;
 }
 
 let isRefreshingActive = false;
@@ -524,9 +512,12 @@ function renderDeptMonitor() {
     const dMembers = members.filter((m) => (m.permMode || 'cskh') === d.key);
     let openCount = 0;
     let closedCount = 0;
+    let onlineCount = 0;
 
     const list = dMembers.map((m) => {
       const mStatus = getMemberOnlineStatus(m.id);
+      const isOnline = Boolean(mStatus && mStatus.isOnline);
+      if (isOnline) onlineCount++;
       const isRunning = Boolean(
         mStatus && mStatus.isRunning && Array.isArray(mStatus.shops) && mStatus.shops.length > 0
       );
@@ -547,6 +538,7 @@ function renderDeptMonitor() {
 
       return {
         member: m,
+        isOnline,
         isRunning,
         runningShopIds,
         runningNames,
@@ -559,6 +551,7 @@ function renderDeptMonitor() {
       members: list,
       openCount,
       closedCount,
+      onlineCount,
       totalCount: dMembers.length
     };
   });
@@ -578,7 +571,7 @@ function renderDeptMonitor() {
       <div class="dept-summary-pill ${hasActive ? 'active' : ''}" title="Bấm lọc các gian của bộ phận ${d.name}" onclick="filterByDept('${d.key}')">
         <span>${d.icon} ${d.tag}:</span>
         <span style="color:#3fb950;font-weight:700;">🟢 ${d.openCount} mở</span>
-        <span style="color:var(--muted);">• ⚪ ${d.closedCount} đóng</span>
+        <span style="color:var(--muted);">• ${d.onlineCount} online</span>
       </div>
     `;
   });
@@ -599,7 +592,7 @@ function renderDeptMonitor() {
         <div class="dept-column-header">
           <span class="${d.cls}">${d.icon} ${d.name} (${d.totalCount})</span>
           <span class="dept-count-badge" style="color:${d.openCount > 0 ? '#3fb950' : 'var(--muted)'};">
-            🟢 ${d.openCount} đang mở • ⚪ ${d.closedCount} đã đóng
+            🟢 ${d.openCount} đang mở • ${d.onlineCount} online • ⚪ ${d.closedCount} đóng
           </span>
         </div>
         <div class="dept-member-list">
@@ -620,6 +613,8 @@ function renderDeptMonitor() {
             .map((name) => `<span class="dept-shop-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>`)
             .join(', ');
           shopsSub = `🟢 Đang mở ${item.runningNames.length} shop: <b>${shopNames}</b>`;
+        } else if (item.isOnline) {
+          shopsSub = `🟢 Đang online • Chưa mở shop`;
         } else {
           shopsSub = `⚪ Đã đóng Chrome (Được giao ${item.assignedCount} gian)`;
         }
@@ -633,8 +628,10 @@ function renderDeptMonitor() {
                 <div class="dept-member-shops">${shopsSub}</div>
               </div>
             </div>
-            <div class="dept-member-status-pill ${item.isRunning ? 'open' : 'closed'}">
-              ${item.isRunning ? `🟢 Đang mở (${item.runningShopIds.length})` : '⚪ Đã đóng'}
+            <div class="dept-member-status-pill ${item.isRunning || item.isOnline ? 'open' : 'closed'}">
+              ${item.isRunning
+                ? `🟢 Đang mở (${item.runningShopIds.length})`
+                : item.isOnline ? '🟢 Online' : '⚪ Offline'}
             </div>
           </div>
         `;
@@ -1049,9 +1046,12 @@ async function doLogin(silent = false) {
       await window.api.clearSavedLogin();
     }
     recordShopActivity('login');
+    const loginStatusReport = reportMyActiveShops();
+    await flushPendingActivity();
     toast('👑 Đã đăng nhập quyền Quản trị viên (Admin)!');
-    reportMyActiveShops();
+    await loginStatusReport;
     refreshOnlineActiveShops();
+    refreshActivityHistory(true);
     syncFromCloud(false, true);
     return true;
   }
@@ -1071,9 +1071,11 @@ async function doLogin(silent = false) {
       await window.api.clearSavedLogin();
     }
     recordShopActivity('login');
+    const loginStatusReport = reportMyActiveShops();
+    await flushPendingActivity();
     const assignedCount = getMemberShops(foundMember.id).length;
     toast(`👤 Xin chào ${foundMember.name}! Bạn đang quản lý ${assignedCount} gian hàng.`);
-    reportMyActiveShops();
+    await loginStatusReport;
     refreshOnlineActiveShops();
     syncFromCloud(false, true);
     return true;

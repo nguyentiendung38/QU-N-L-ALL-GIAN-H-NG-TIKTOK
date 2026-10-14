@@ -1,8 +1,8 @@
 {
-  "version": "2.1.42",
-  "buildNumber": 251,
+  "version": "2.1.43",
+  "buildNumber": 252,
   "updatedAt": "2026-10-14",
-  "notes": "thêm nhân viên shoppe",
+  "notes": "fix update hệ thống",
   "files": [
     "main.js",
     "main-core.js",

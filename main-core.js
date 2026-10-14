@@ -1179,6 +1179,7 @@ ipcMain.handle('browser:pick', async () => {
 const runningShops = new Map();
 const shopChildProcesses = new Map();
 const proxyForwarders = new Map();
+const profileProbePending = new Set();
 
 function isProcessAlive(pid) {
   const p = parseInt(pid, 10);
@@ -1226,6 +1227,10 @@ function syncRunningShops() {
         const saved = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
         if (saved > 0) pid = saved;
       } catch {}
+    }
+    if (profileProbePending.has(s.id)) {
+      activeIds.push(s.id);
+      continue;
     }
     // Tren Windows, PID moi la dau hieu dang tin cay; lockfile co the con lai sau khi Chrome dong.
     const alive = (pid && isProcessAlive(pid)) || isProfileLocked(dir);
@@ -1695,16 +1700,21 @@ Write-Output "NOT_FOUND"
   });
 }
 
-function findProfileProcessIds(profileDir) {
+function findProfileProcessIds(profileDir, browserOnly = false) {
   return new Promise((resolve) => {
     const escapedDir = profileDir.replace(/'/g, "''");
+    const browserOnlyValue = browserOnly ? '$true' : '$false';
     const script = `
 $profileDir = '${escapedDir}'
+$browserOnly = ${browserOnlyValue}
 try {
   Get-CimInstance Win32_Process -ErrorAction Stop |
     Where-Object {
       $commandLine = [string]$_.CommandLine
       if (-not $commandLine -or ($_.Name -ine 'chrome.exe' -and $_.Name -ine 'msedge.exe')) {
+        return $false
+      }
+      if ($browserOnly -and $commandLine -match '(?:^|\\s)--type(?:=|\\s)') {
         return $false
       }
       $profileIndex = $commandLine.IndexOf($profileDir, [StringComparison]::OrdinalIgnoreCase)
@@ -2241,18 +2251,52 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl, allowGmvExtension
         if (shopChildProcesses.get(id) === child) {
           shopChildProcesses.delete(id);
         }
-        // Cho 1.2s de xac nhan Chrome co thuc su dong hay chi la tien trinh launcher ban dau thoat
-        setTimeout(() => {
-          if (isProfileLocked(dir)) {
+        profileProbePending.add(id);
+        const reconcileExitedLaunch = async (attempt = 0) => {
+          if (process.platform === 'win32') {
+            const result = await findProfileProcessIds(dir, true);
+            if (result.error) {
+              console.warn(`Không xác minh được Chrome của shop ${id}:`, result.error);
+              if (attempt < 2) {
+                setTimeout(() => reconcileExitedLaunch(attempt + 1), 1200);
+                return;
+              }
+            } else if (result.pids.length) {
+              const profilePid = result.pids.find((pid) => isProcessAlive(pid));
+              if (!profilePid) {
+                profileProbePending.delete(id);
+                notifyRunningChanged(true);
+                return;
+              }
+              runningShops.set(id, profilePid);
+              try {
+                fs.writeFileSync(pidFile, String(profilePid), 'utf8');
+              } catch (error) {
+                console.warn(`Không lưu được PID Chrome của shop ${id}:`, error);
+              }
+              profileProbePending.delete(id);
+              notifyRunningChanged(true);
+              return;
+            }
+          } else if (isProfileLocked(dir)) {
+            profileProbePending.delete(id);
+            notifyRunningChanged(true);
             return;
           }
-          runningShops.delete(id);
+
+          if (shopChildProcesses.has(id)) {
+            profileProbePending.delete(id);
+            return;
+          }
+          if (runningShops.get(id) === child.pid) runningShops.delete(id);
+          profileProbePending.delete(id);
           stopProxyForwarder(id);
           try {
             fs.unlinkSync(pidFile);
           } catch {}
           notifyRunningChanged(true);
-        }, 1200);
+        };
+        setTimeout(() => reconcileExitedLaunch(), 1200);
       });
 
       child.unref();
