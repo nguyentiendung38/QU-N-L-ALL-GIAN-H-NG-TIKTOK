@@ -1,8 +1,8 @@
 {
-  "version": "2.1.32",
-  "buildNumber": 241,
+  "version": "2.1.33",
+  "buildNumber": 242,
   "updatedAt": "2026-10-14",
-  "notes": "update extions được chọn",
+  "notes": "xóa mục cảnh báo proxy",
   "files": [
     "main.js",
     "main-core.js",

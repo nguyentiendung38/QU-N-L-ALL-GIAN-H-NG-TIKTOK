@@ -1686,6 +1686,65 @@ try {
   });
 }
 
+function verifyShopProcess(pid, profileDir) {
+  return new Promise((resolve) => {
+    const escapedDir = profileDir.replace(/'/g, "''");
+    const script = `
+$targetPid = ${parseInt(pid, 10) || 0}
+$profileDir = '${escapedDir}'
+try {
+  $process = Get-CimInstance Win32_Process -Filter "ProcessId = $targetPid" -ErrorAction Stop
+  if (-not $process -or ($process.Name -ine 'chrome.exe' -and $process.Name -ine 'msedge.exe')) {
+    Write-Output 'NOT_MATCH'
+    exit 0
+  }
+  $commandLine = [string]$process.CommandLine
+  $escapedProfile = [regex]::Escape($profileDir)
+  if ($commandLine -match ('(?i)--user-data-dir="?'+$escapedProfile+'"?(?=\\s|$)')) {
+    Write-Output 'MATCH'
+  } else {
+    Write-Output 'NOT_MATCH'
+  }
+} catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  exit 1
+}
+`;
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'], {
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      resolve({ matches: false, error: 'Hết thời gian xác minh PID Chrome của shop' });
+    }, 5000);
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) {
+        resolve({ matches: false, error: stderr.trim() ? `${error}: ${stderr.trim()}` : error });
+        return;
+      }
+      resolve({ matches: stdout.trim().split(/\s+/).includes('MATCH') });
+    };
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    child.once('error', (error) => finish(error.message));
+    child.once('close', (code) => finish(code === 0 ? null : `PowerShell thoát với mã ${code}`));
+    child.stdin.end(script);
+  });
+}
+
 function killShopPid(pid) {
   return new Promise((resolve) => {
     const child = spawn('taskkill', ['/F', '/PID', String(pid), '/T'], {
@@ -1755,12 +1814,17 @@ async function closeShopProcess(id) {
     }
     if (!pids.length) {
       if (pid && isProcessAlive(pid)) {
-        return {
-          ok: false,
-          error: `PID Chrome đã lưu (${pid}) vẫn hoạt động nhưng không xác minh được thuộc profile shop này; không đóng để tránh ảnh hưởng Chrome khác.`
-        };
+        const verification = await verifyShopProcess(pid, dir);
+        if (verification.error) {
+          return { ok: false, error: `Không xác minh được PID Chrome (${pid}) của shop: ${verification.error}` };
+        }
+        if (verification.matches) {
+          pids.push(pid);
+        } else {
+          return finish();
+        }
       }
-      return finish();
+      if (!pids.length) return finish();
     }
     const killErrors = (await Promise.all(pids.map(killShopPid))).filter(Boolean);
     pid = pids.includes(pid) ? pid : 0;

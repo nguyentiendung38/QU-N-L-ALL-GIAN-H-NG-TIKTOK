@@ -693,7 +693,6 @@ function renderAdminDashboard() {
   activity.sort((a, b) => Number(b.time) - Number(a.time));
 
   const alerts = [];
-  if (activeCloudError) alerts.push(`Không gửi được trạng thái lên Cloud: ${activeCloudError}`);
   if (activeStatusFetchError) alerts.push(`Không tải được trạng thái nhân viên: ${activeStatusFetchError}`);
   failedProxyShops.forEach((shop) => {
     const error = proxyStatusMap.get(shop.id)?.error || 'Proxy không kết nối được';
