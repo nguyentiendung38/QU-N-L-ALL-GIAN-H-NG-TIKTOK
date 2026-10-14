@@ -30,6 +30,9 @@ let activeStatusFetchError = '';
 let isDeptMonitorCollapsed = (function () {
   try { return localStorage.getItem('deptMonitorCollapsed') === '1'; } catch { return false; }
 })();
+let isAdminDashboardCollapsed = (function () {
+  try { return localStorage.getItem('adminDashboardCollapsed') === '1'; } catch { return false; }
+})();
 let isShopListCollapsed = (function () {
   try { return localStorage.getItem('shopListCollapsed') === '1'; } catch { return false; }
 })();
@@ -717,7 +720,7 @@ function renderAdminDashboard() {
     : activeCloudOk
       ? '<span class="dashboard-status ok">☁ Đang hoạt động</span>'
       : '<span class="dashboard-status pending">☁ Đang kiểm tra</span>';
-  const activityRows = activity.slice(0, 8).map((event) => {
+  const activityRows = activity.map((event) => {
     const isOpen = event.action === 'open' || event.action === 'login';
     const actionLabel = {
       open: 'Mở shop',
@@ -735,14 +738,24 @@ function renderAdminDashboard() {
     `;
   }).join('');
 
+  const previousActivityScrollTop = $('adminDashboardSection')
+    .querySelector('.dashboard-activity-scroll')?.scrollTop || 0;
   container.innerHTML = `
     <div class="admin-dashboard-header">
       <div>
         <div class="admin-dashboard-title">📊 Tổng quan hệ thống</div>
         <div class="admin-dashboard-subtitle">Cập nhật theo trạng thái shop, nhân viên và Proxy</div>
       </div>
-      ${cloudStatus}
+      <div class="admin-dashboard-header-actions">
+        ${cloudStatus}
+        <button type="button" class="btn small" id="adminDashboardToggleBtn"
+          aria-expanded="${!isAdminDashboardCollapsed}"
+          title="${isAdminDashboardCollapsed ? 'Mở rộng tổng quan hệ thống' : 'Thu gọn tổng quan hệ thống'}">
+          ${isAdminDashboardCollapsed ? '▾ Mở rộng' : '▴ Thu gọn'}
+        </button>
+      </div>
     </div>
+    <div class="admin-dashboard-content${isAdminDashboardCollapsed ? ' collapsed' : ''}">
     <div class="dashboard-stat-grid">
       <div class="dashboard-stat-card">
         <span class="dashboard-stat-label">Tổng shop</span>
@@ -777,16 +790,32 @@ function renderAdminDashboard() {
       </section>
       <section class="dashboard-panel">
         <div class="dashboard-panel-header">
-          <h3>🕘 Hoạt động gần đây</h3>
+          <h3>🕘 Hoạt động gần đây (${activity.length})</h3>
           <button type="button" class="btn small" id="dashboardRefreshActivityBtn">↻ Làm mới</button>
         </div>
         ${activityRows
-          ? `<div class="dashboard-activity-list">${activityRows}</div>`
+          ? `<div class="dashboard-activity-scroll"><div class="dashboard-activity-list">${activityRows}</div></div>`
           : '<div class="dashboard-all-clear">Chưa có hoạt động được ghi nhận</div>'}
       </section>
     </div>
+    </div>
   `;
 
+  const activityScroll = container.querySelector('.dashboard-activity-scroll');
+  if (activityScroll) activityScroll.scrollTop = previousActivityScrollTop;
+
+  const dashboardToggleBtn = $('adminDashboardToggleBtn');
+  if (dashboardToggleBtn) {
+    dashboardToggleBtn.onclick = () => {
+      isAdminDashboardCollapsed = !isAdminDashboardCollapsed;
+      try {
+        localStorage.setItem('adminDashboardCollapsed', isAdminDashboardCollapsed ? '1' : '0');
+      } catch (error) {
+        console.warn('Không lưu được trạng thái thu gọn tổng quan:', error);
+      }
+      renderAdminDashboard();
+    };
+  }
   const checkProxyBtn = $('dashboardCheckProxyBtn');
   if (checkProxyBtn) {
     checkProxyBtn.onclick = () => {
@@ -1180,9 +1209,21 @@ if ($('otaApplyBtn')) {
       btn.textContent = '⚡ Cập nhật ngay (2s)';
       toast('❌ Lỗi cập nhật: ' + ((res && res.error) || 'Không tải được file'));
     } else if (window.api.restartApp) {
-      btn.textContent = '🔄 Đang khởi động lại...';
-      toast('✅ Đã cập nhật. Ứng dụng đang khởi động lại; các cửa sổ Chrome shop vẫn giữ nguyên.');
-      window.api.restartApp();
+      try {
+        const restart = await window.api.restartApp();
+        if (!restart || !restart.ok) {
+          btn.disabled = false;
+          btn.textContent = '⚡ Cập nhật ngay (2s)';
+          toast('❌ Đã tải bản mới nhưng không khởi động lại được: ' + ((restart && restart.error) || 'lỗi không rõ'));
+          return;
+        }
+        btn.textContent = '🔄 Đang khởi động lại...';
+        toast('✅ Đã cập nhật. Ứng dụng đang khởi động lại; các cửa sổ Chrome shop vẫn giữ nguyên.');
+      } catch (error) {
+        btn.disabled = false;
+        btn.textContent = '⚡ Cập nhật ngay (2s)';
+        toast('❌ Đã tải bản mới nhưng không khởi động lại được: ' + (error.message || 'lỗi không rõ'));
+      }
     } else {
       btn.disabled = false;
       btn.textContent = '⚡ Cập nhật ngay (2s)';

@@ -524,9 +524,21 @@ ipcMain.handle('ota:apply', async () => {
   }
 });
 
+let isRestartingApp = false;
 ipcMain.handle('app:restart', () => {
-  app.relaunch();
-  app.exit(0);
+  if (isRestartingApp) return { ok: true, restarting: true };
+  try {
+    isRestartingApp = true;
+    app.relaunch({
+      execPath: process.execPath,
+      args: process.argv.slice(1)
+    });
+    app.quit();
+    return { ok: true, restarting: true };
+  } catch (error) {
+    isRestartingApp = false;
+    return { ok: false, error: error.message };
+  }
 });
 
 // Tim Chrome (hoac Edge neu khong co Chrome). Co the chon tay trong phan cai dat.

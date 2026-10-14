@@ -1,8 +1,8 @@
 {
-  "version": "2.1.33",
-  "buildNumber": 242,
+  "version": "2.1.34",
+  "buildNumber": 243,
   "updatedAt": "2026-10-14",
-  "notes": "xóa mục cảnh báo proxy",
+  "notes": "fix lỗi",
   "files": [
     "main.js",
     "main-core.js",
