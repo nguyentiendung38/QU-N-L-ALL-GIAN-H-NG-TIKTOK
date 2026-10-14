@@ -1,8 +1,8 @@
 {
-  "version": "2.1.49",
-  "buildNumber": 258,
+  "version": "2.1.50",
+  "buildNumber": 259,
   "updatedAt": "2026-10-14",
-  "notes": "Cập nhật OTA nền và đồng bộ trạng thái shop",
+  "notes": "fix tab shoppe",
   "files": [
     "main.js",
     "main-core.js",

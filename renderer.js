@@ -1464,6 +1464,13 @@ function renderGroupTabs() {
   const items = [
     { key: '__ALL__', label: `Tất cả (${roleShops.length})` },
     { key: '__RUNNING__', label: `🟢 Đang mở (${runningInRole})` },
+    ...(activePlatform === 'ALL'
+      ? [{
+          key: '__PLATFORM_SHOPEE__',
+          label: `🛒 Shopee (${roleShops.filter((shop) => shop.platform === 'shopee').length})`,
+          platform: 'shopee'
+        }]
+      : []),
     ...groups.map((g) => ({
       key: g,
       label: `📁 ${g} (${groupCounts.get(g) || 0})`
@@ -1480,9 +1487,18 @@ function renderGroupTabs() {
 
   for (const item of items) {
     const btn = document.createElement('button');
-    btn.className = 'tab-pill' + (activeGroup === item.key ? ' active' : '');
+    btn.className = 'tab-pill' + (
+      (item.platform ? activePlatform === item.platform : activeGroup === item.key) ? ' active' : ''
+    );
     btn.textContent = item.label;
     btn.onclick = () => {
+      if (item.platform) {
+        activePlatform = item.platform;
+        activeGroup = '__ALL__';
+        $('platformFilterSelect').value = item.platform;
+        render();
+        return;
+      }
       activeGroup = item.key;
       render();
     };
