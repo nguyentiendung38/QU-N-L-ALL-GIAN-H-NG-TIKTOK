@@ -520,15 +520,51 @@ ipcMain.handle('ota:apply', async () => {
 });
 
 let isRestartingApp = false;
-ipcMain.handle('app:restart', () => {
+function quotePowerShell(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function startWindowsRestartSupervisor() {
+  const executablePath = process.execPath;
+  const restartArgs = process.argv.slice(1);
+  const encodedScript = [
+    `$parentPid = ${process.pid}`,
+    'while (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 250 }',
+    `$executablePath = ${quotePowerShell(executablePath)}`,
+    `$restartArgs = @(${restartArgs.map(quotePowerShell).join(',')})`,
+    '& $executablePath @restartArgs'
+  ].join('\n');
+  const encodedCommand = Buffer.from(encodedScript, 'utf16le').toString('base64');
+
+  return new Promise((resolve, reject) => {
+    const supervisor = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encodedCommand],
+      { detached: true, windowsHide: true, stdio: 'ignore' }
+    );
+    supervisor.once('error', reject);
+    supervisor.once('spawn', () => {
+      supervisor.unref();
+      resolve();
+    });
+  });
+}
+
+ipcMain.handle('app:restart', async () => {
   if (isRestartingApp) return { ok: true, restarting: true };
   try {
-    isRestartingApp = true;
-    app.relaunch({
-      execPath: process.execPath,
-      args: process.argv.slice(1)
-    });
-    app.quit();
+    if (process.platform === 'win32') {
+      await startWindowsRestartSupervisor();
+      isRestartingApp = true;
+      setTimeout(() => app.quit(), 300);
+    } else {
+      app.relaunch({
+        execPath: process.execPath,
+        args: process.argv.slice(1)
+      });
+      isRestartingApp = true;
+      setTimeout(() => app.quit(), 300);
+    }
     return { ok: true, restarting: true };
   } catch (error) {
     isRestartingApp = false;
