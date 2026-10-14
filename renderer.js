@@ -1446,9 +1446,11 @@ function renderGroupTabs() {
   const wrap = $('groupTabs');
   wrap.innerHTML = '';
 
-  const roleShops = getVisibleShopsForRole().filter(
+  const visibleRoleShops = getVisibleShopsForRole();
+  const roleShops = visibleRoleShops.filter(
     (shop) => activePlatform === 'ALL' || (shop.platform || 'tiktok') === activePlatform
   );
+  const shopeeCount = visibleRoleShops.filter((shop) => shop.platform === 'shopee').length;
   const groups = Array.from(
     new Set(roleShops.map((s) => (s.group || '').trim()).filter(Boolean))
   );
@@ -1464,13 +1466,11 @@ function renderGroupTabs() {
   const items = [
     { key: '__ALL__', label: `Tất cả (${roleShops.length})` },
     { key: '__RUNNING__', label: `🟢 Đang mở (${runningInRole})` },
-    ...(activePlatform === 'ALL'
-      ? [{
-          key: '__PLATFORM_SHOPEE__',
-          label: `🛒 Shopee (${roleShops.filter((shop) => shop.platform === 'shopee').length})`,
-          platform: 'shopee'
-        }]
-      : []),
+    {
+      key: '__PLATFORM_SHOPEE__',
+      label: `🛒 Shopee (${shopeeCount})`,
+      platform: 'shopee'
+    },
     ...groups.map((g) => ({
       key: g,
       label: `📁 ${g} (${groupCounts.get(g) || 0})`
