@@ -1,8 +1,8 @@
 {
-  "version": "2.1.48",
-  "buildNumber": 257,
+  "version": "2.1.49",
+  "buildNumber": 258,
   "updatedAt": "2026-10-14",
-  "notes": "Khắc phục HTTP 400 Cloud và giữ đủ lịch sử 15 hoạt động gần đây",
+  "notes": "Cập nhật OTA nền và đồng bộ trạng thái shop",
   "files": [
     "main.js",
     "main-core.js",
