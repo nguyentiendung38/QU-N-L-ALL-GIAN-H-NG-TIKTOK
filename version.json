@@ -1,8 +1,8 @@
 {
-  "version": "2.1.13",
-  "buildNumber": 222,
+  "version": "2.1.14",
+  "buildNumber": 223,
   "updatedAt": "2026-10-14",
-  "notes": "Xoa logo icon o header va man hinh dang nhap",
+  "notes": "Them bang giam sat trang thai mo dong Chrome theo tung bo phan CSKH, Van hanh, Ads cho Admin",
   "files": [
     "index.html",
     "renderer.js",

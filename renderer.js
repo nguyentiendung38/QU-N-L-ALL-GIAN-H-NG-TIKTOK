@@ -10,7 +10,11 @@ let shops = [];
 let members = [];
 let authConfig = { adminUser: 'admin', adminPass: '123456', requireLogin: true };
 let runningIds = new Set();
-let onlineActiveShops = {}; // { [shopId]: { who: string, userKey: string, time: number } }
+let onlineActiveShops = {}; // { [shopId]: { who: string, role: string, userKey: string, time: number } }
+let onlineActiveUsers = {}; // { [userKey]: { who: string, role: string, isOnline: boolean, isRunning: boolean, shops: string[] } }
+let isDeptMonitorCollapsed = (function () {
+  try { return localStorage.getItem('deptMonitorCollapsed') === '1'; } catch { return false; }
+})();
 let selectedIds = new Set();
 let proxyStatusMap = new Map();
 let editingId = null;
@@ -92,18 +96,25 @@ async function reportMyActiveShops() {
   try {
     const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
     const userName = currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName();
+    const role = (isMemberMode() && currentUser.member) ? (currentUser.member.permMode || 'cskh') : 'admin';
     const shopIds = Array.from(runningIds);
-    await window.api.cloudReportActive({ userKey, userName, shopIds });
+    await window.api.cloudReportActive({ userKey, userName, role, shopIds });
   } catch {}
 }
 
 async function refreshOnlineActiveShops() {
   try {
-    const map = await window.api.cloudGetActive();
-    if (map && typeof map === 'object') {
-      onlineActiveShops = map;
+    const res = await window.api.cloudGetActive();
+    if (res && typeof res === 'object') {
+      if (res.shops || res.users) {
+        onlineActiveShops = res.shops || {};
+        onlineActiveUsers = res.users || {};
+      } else {
+        onlineActiveShops = res;
+      }
       if (currentUser) {
         updateCardsRunningStatus();
+        renderDeptMonitor();
       }
     }
   } catch {}
@@ -129,9 +140,23 @@ function updateCardsRunningStatus() {
         statusText = 'Đang mở';
         statusTitle = 'Đang mở Chrome trên máy này';
       } else if (remoteActive) {
-        statusText = `${remoteActive.who} đang mở`;
-        statusTitle = `Đang được mở làm việc bởi ${remoteActive.who} (Online)`;
+        const roleLabel = remoteActive.role === 'vanhanh' ? 'Vận hành' : (remoteActive.role === 'ads' ? 'Ads' : 'CSKH');
+        statusText = `${roleLabel}: ${remoteActive.who} đang mở`;
+        statusTitle = `Đang được mở làm việc bởi ${remoteActive.who} (Bộ phận ${roleLabel})`;
       }
+
+      const s = shops.find((x) => x.id === sid);
+      const assigned = getShopMembers(s);
+      if (assigned.length > 0) {
+        const memberLines = assigned.map((m) => {
+          const mStatus = getMemberOnlineStatus(m.id);
+          const isMOpen = Boolean(mStatus && mStatus.isRunning && Array.isArray(mStatus.shops) && mStatus.shops.includes(sid));
+          const pTag = m.permMode === 'vanhanh' ? '📦 Vận hành' : (m.permMode === 'ads' ? '📈 Ads' : '🎧 CSKH');
+          return `• ${pTag} [${m.name}]: ${isMOpen ? '🟢 ĐANG MỞ' : '⚪ ĐÃ ĐÓNG'}`;
+        });
+        statusTitle += '\n\nPhân công phụ trách:\n' + memberLines.join('\n');
+      }
+
       pill.innerHTML = `<span class="dot"></span><span class="status-txt">${statusText}</span>`;
       pill.title = statusTitle;
     }
@@ -179,6 +204,217 @@ function getVisibleShopsForRole() {
     return getMemberShops(currentUser.member.id);
   }
   return shops;
+}
+
+function getMemberOnlineStatus(memberId) {
+  if (!memberId) return null;
+  const safeKey = String(memberId).trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+  const u = onlineActiveUsers[safeKey] || onlineActiveUsers[memberId];
+  if (u) return u;
+
+  if (isMemberMode() && currentUser && currentUser.member && currentUser.member.id === memberId) {
+    const rShops = Array.from(runningIds);
+    return {
+      userKey: safeKey,
+      who: currentUser.member.name,
+      role: currentUser.member.permMode || 'cskh',
+      time: Date.now(),
+      isOnline: true,
+      isRunning: rShops.length > 0,
+      shops: rShops
+    };
+  }
+  return null;
+}
+
+window.filterByMember = function (memberId) {
+  activeMember = memberId;
+  if ($('memberFilterSelect')) {
+    $('memberFilterSelect').value = memberId;
+  }
+  render();
+  const m = members.find((x) => x.id === memberId);
+  if (m) toast(`🔍 Đang lọc danh sách gian hàng của: ${m.name}`);
+};
+
+window.filterByDept = function (deptKey) {
+  const deptMembers = members.filter((m) => (m.permMode || 'cskh') === deptKey);
+  const deptName = deptKey === 'vanhanh' ? 'Vận hành' : (deptKey === 'ads' ? 'Ads' : 'CSKH');
+  if (deptMembers.length > 0) {
+    activeMember = deptMembers[0].id;
+    if ($('memberFilterSelect')) $('memberFilterSelect').value = activeMember;
+    render();
+    toast(`🔍 Đang hiển thị gian hàng của bộ phận ${deptName} (${deptMembers.map((m) => m.name).join(', ')})`);
+  } else {
+    toast(`⚠️ Chưa có nhân viên nào thuộc bộ phận ${deptName}`);
+  }
+};
+
+function renderDeptMonitor() {
+  const container = $('deptMonitorSection');
+  if (!container) return;
+  if (isMemberMode()) {
+    container.classList.add('hidden');
+    return;
+  }
+  container.classList.remove('hidden');
+
+  if (!members || members.length === 0) {
+    container.innerHTML = `
+      <div class="dept-monitor-header">
+        <div class="dept-monitor-title" title="Theo dõi trạng thái mở Chrome của nhân viên CSKH / Vận hành / Ads thời gian thực">
+          <span class="dept-monitor-live-dot"></span>
+          <span>Giám sát nhân viên theo bộ phận (Realtime)</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">Chưa có nhân viên nào. Bấm Avatar Quản trị viên ➔ Quản lý thành viên để thêm nhân viên.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const depts = [
+    { key: 'cskh', name: 'Bộ phận CSKH', icon: '🎧', tag: 'CSKH', cls: 'dept-badge-cskh' },
+    { key: 'vanhanh', name: 'Bộ phận Vận hành', icon: '📦', tag: 'Vận hành', cls: 'dept-badge-vanhanh' },
+    { key: 'ads', name: 'Bộ phận Ads', icon: '📈', tag: 'Ads', cls: 'dept-badge-ads' }
+  ];
+
+  const deptData = depts.map((d) => {
+    const dMembers = members.filter((m) => (m.permMode || 'cskh') === d.key);
+    let openCount = 0;
+    let closedCount = 0;
+
+    const list = dMembers.map((m) => {
+      const mStatus = getMemberOnlineStatus(m.id);
+      const isRunning = Boolean(
+        mStatus && mStatus.isRunning && Array.isArray(mStatus.shops) && mStatus.shops.length > 0
+      );
+      if (isRunning) {
+        openCount++;
+      } else {
+        closedCount++;
+      }
+      const runningShopIds = (mStatus && Array.isArray(mStatus.shops)) ? mStatus.shops : [];
+      const runningNames = runningShopIds
+        .map((sid) => {
+          const s = shops.find((x) => x.id === sid);
+          return s ? s.name : sid;
+        })
+        .filter(Boolean);
+
+      const assignedCount = (Array.isArray(m.shopIds) ? m.shopIds.length : 0);
+
+      return {
+        member: m,
+        isRunning,
+        runningShopIds,
+        runningNames,
+        assignedCount
+      };
+    });
+
+    return {
+      ...d,
+      members: list,
+      openCount,
+      closedCount,
+      totalCount: dMembers.length
+    };
+  });
+
+  let headerHtml = `
+    <div class="dept-monitor-header">
+      <div class="dept-monitor-title" title="Theo dõi trạng thái mở Chrome của nhân viên CSKH / Vận hành / Ads thời gian thực">
+        <span class="dept-monitor-live-dot"></span>
+        <span>Giám sát nhân viên theo bộ phận (Realtime)</span>
+      </div>
+      <div class="dept-monitor-summary">
+  `;
+
+  deptData.forEach((d) => {
+    const hasActive = d.openCount > 0;
+    headerHtml += `
+      <div class="dept-summary-pill ${hasActive ? 'active' : ''}" title="Bấm lọc các gian của bộ phận ${d.name}" onclick="filterByDept('${d.key}')">
+        <span>${d.icon} ${d.tag}:</span>
+        <span style="color:#3fb950;font-weight:700;">🟢 ${d.openCount} mở</span>
+        <span style="color:var(--muted);">• ⚪ ${d.closedCount} đóng</span>
+      </div>
+    `;
+  });
+
+  headerHtml += `
+        <button type="button" class="dept-toggle-btn" id="deptToggleBtn">
+          ${isDeptMonitorCollapsed ? '▾ Mở rộng chi tiết' : '▴ Thu gọn'}
+        </button>
+      </div>
+    </div>
+  `;
+
+  let bodyHtml = `<div class="dept-monitor-body ${isDeptMonitorCollapsed ? 'collapsed' : ''}">`;
+
+  deptData.forEach((d) => {
+    bodyHtml += `
+      <div class="dept-column">
+        <div class="dept-column-header">
+          <span class="${d.cls}">${d.icon} ${d.name} (${d.totalCount})</span>
+          <span class="dept-count-badge" style="color:${d.openCount > 0 ? '#3fb950' : 'var(--muted)'};">
+            🟢 ${d.openCount} đang mở • ⚪ ${d.closedCount} đã đóng
+          </span>
+        </div>
+        <div class="dept-member-list">
+    `;
+
+    if (d.members.length === 0) {
+      bodyHtml += `<div class="dept-empty-hint">Chưa có nhân viên bộ phận này</div>`;
+    } else {
+      d.members.forEach((item) => {
+        const m = item.member;
+        const color = m.color || '#388bfd';
+        const init = initials(m.name);
+        const uname = m.username || slugUsername(m.name) || m.name;
+
+        let shopsSub = '';
+        if (item.isRunning) {
+          shopsSub = `🟢 Đang mở ${item.runningNames.length} gian: <b>${item.runningNames.join(', ')}</b>`;
+        } else {
+          shopsSub = `⚪ Đã đóng Chrome (Được giao ${item.assignedCount} gian)`;
+        }
+
+        bodyHtml += `
+          <div class="dept-member-card ${item.isRunning ? 'is-active' : ''}" title="Bấm để lọc xem toàn bộ gian hàng của ${m.name}" onclick="filterByMember('${m.id}')">
+            <div class="dept-member-left">
+              <div class="dept-member-dot" style="background:${color}">${init}</div>
+              <div class="dept-member-info">
+                <div class="dept-member-name">${m.name} <span style="font-weight:400;color:var(--muted);font-size:11px;">(@${uname})</span></div>
+                <div class="dept-member-shops">${shopsSub}</div>
+              </div>
+            </div>
+            <div class="dept-member-status-pill ${item.isRunning ? 'open' : 'closed'}">
+              ${item.isRunning ? `🟢 Đang mở (${item.runningShopIds.length})` : '⚪ Đã đóng'}
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    bodyHtml += `
+        </div>
+      </div>
+    `;
+  });
+
+  bodyHtml += `</div>`;
+
+  container.innerHTML = headerHtml + bodyHtml;
+
+  const toggleBtn = $('deptToggleBtn');
+  if (toggleBtn) {
+    toggleBtn.onclick = (e) => {
+      e.stopPropagation();
+      isDeptMonitorCollapsed = !isDeptMonitorCollapsed;
+      try { localStorage.setItem('deptMonitorCollapsed', isDeptMonitorCollapsed ? '1' : '0'); } catch {}
+      renderDeptMonitor();
+    };
+  }
 }
 
 function applyRoleUI() {
@@ -229,6 +465,8 @@ function applyRoleUI() {
   $('addBtn').classList.toggle('hidden', isMem);
   $('memberFilterSelect').classList.toggle('hidden', isMem);
   $('backToAdminBtn').classList.toggle('hidden', !(isMem && currentUser.isAdminPreview));
+
+  renderDeptMonitor();
 }
 
 async function syncFromCloud(force = false, silent = true) {
@@ -858,9 +1096,22 @@ function render() {
       statusText = 'Đang mở';
       statusTitle = 'Đang mở Chrome trên máy này';
     } else if (remoteActive) {
-      statusText = `${remoteActive.who} đang mở`;
-      statusTitle = `Đang được mở làm việc bởi ${remoteActive.who} (Online)`;
+      const roleLabel = remoteActive.role === 'vanhanh' ? 'Vận hành' : (remoteActive.role === 'ads' ? 'Ads' : 'CSKH');
+      statusText = `${roleLabel}: ${remoteActive.who} đang mở`;
+      statusTitle = `Đang được mở làm việc bởi ${remoteActive.who} (Bộ phận ${roleLabel})`;
     }
+
+    const assignedMembers = getShopMembers(s);
+    if (assignedMembers.length > 0) {
+      const memberLines = assignedMembers.map((m) => {
+        const mStatus = getMemberOnlineStatus(m.id);
+        const isMOpen = Boolean(mStatus && mStatus.isRunning && Array.isArray(mStatus.shops) && mStatus.shops.includes(s.id));
+        const pTag = m.permMode === 'vanhanh' ? '📦 Vận hành' : (m.permMode === 'ads' ? '📈 Ads' : '🎧 CSKH');
+        return `• ${pTag} [${m.name}]: ${isMOpen ? '🟢 ĐANG MỞ' : '⚪ ĐÃ ĐÓNG'}`;
+      });
+      statusTitle += '\n\nPhân công phụ trách:\n' + memberLines.join('\n');
+    }
+
     statusPill.innerHTML = `<span class="dot"></span><span class="status-txt">${statusText}</span>`;
     statusPill.title = statusTitle;
 
@@ -870,7 +1121,6 @@ function render() {
     const metaRow = document.createElement('div');
     metaRow.className = 'meta-row';
 
-    const assignedMembers = getShopMembers(s);
     const displayMembers = isMemberMode()
       ? [currentUser.member]
       : (activeMember !== 'ALL' && activeMember !== '__UNASSIGNED__'
@@ -1043,6 +1293,7 @@ function render() {
 
     grid.appendChild(card);
   });
+  renderDeptMonitor();
 }
 
 async function openShop(s, which) {

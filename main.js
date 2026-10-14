@@ -606,9 +606,12 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
     const rawKey = (data && data.userKey ? String(data.userKey).trim() : 'admin');
     const userKey = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
     const who = (data && data.userName ? String(data.userName).trim() : 'Admin');
+    const role = (data && data.role ? String(data.role).trim() : 'cskh');
     const shops = (data && Array.isArray(data.shopIds)) ? data.shopIds : [];
     const payload = {
       who,
+      role,
+      userKey: rawKey,
       time: Date.now(),
       shops
     };
@@ -652,26 +655,43 @@ ipcMain.handle('cloud:getActive', async () => {
     );
 
     const activeMap = {};
+    const usersMap = {};
     const now = Date.now();
     const TTL = 50 * 1000; // 50 giay timeout phong khi tat may dot ngot
 
     for (const item of results) {
       if (!item || !item.data) continue;
-      const { who, time, shops } = item.data;
-      if (now - time > TTL) continue;
-      if (Array.isArray(shops)) {
+      const { who, role, time, shops } = item.data;
+      const isAlive = (now - time <= TTL);
+      const activeShops = (isAlive && Array.isArray(shops)) ? shops : [];
+
+      usersMap[item.key] = {
+        userKey: item.key,
+        who: who || 'Nhân viên',
+        role: role || 'cskh',
+        time,
+        isOnline: isAlive,
+        isRunning: isAlive && activeShops.length > 0,
+        shops: activeShops
+      };
+
+      if (isAlive && Array.isArray(shops)) {
         for (const sid of shops) {
           activeMap[sid] = {
             who: who || 'Nhân viên',
+            role: role || 'cskh',
             userKey: item.key,
             time
           };
         }
       }
     }
-    return activeMap;
+    return {
+      shops: activeMap,
+      users: usersMap
+    };
   } catch (e) {
-    return {};
+    return { shops: {}, users: {} };
   }
 });
 
