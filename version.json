@@ -1,8 +1,8 @@
 {
-  "version": "2.1.39",
-  "buildNumber": 248,
+  "version": "2.1.40",
+  "buildNumber": 249,
   "updatedAt": "2026-10-14",
-  "notes": "fix update khi mở lại app3",
+  "notes": "fix update shopee",
   "files": [
     "main.js",
     "main-core.js",

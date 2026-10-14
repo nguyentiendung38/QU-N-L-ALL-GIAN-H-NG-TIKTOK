@@ -2119,10 +2119,12 @@ function randomColor() {
   return palette[shops.length % palette.length];
 }
 
-function openDialog(shop, focusProxy = false) {
+function openDialog(shop, focusProxy = false, initialPlatform = 'tiktok') {
   editingId = shop ? shop.id : null;
-  const platform = shop && shop.platform === 'shopee' ? 'shopee' : 'tiktok';
-  $('dlgTitle').textContent = shop ? 'Sửa gian hàng' : 'Thêm gian hàng';
+  const platform = shop
+    ? (shop.platform === 'shopee' ? 'shopee' : 'tiktok')
+    : (initialPlatform === 'shopee' ? 'shopee' : 'tiktok');
+  $('dlgTitle').textContent = shop ? 'Sửa gian hàng' : 'Thêm Shop';
   $('fName').value = shop ? shop.name : '';
   $('fPlatform').value = platform;
   $('fSellerUrl').value = (shop && shop.sellerUrl) || (platform === 'shopee' ? DEFAULT_SHOPEE_URL : DEFAULT_TIKTOK_URL);
@@ -2145,7 +2147,8 @@ function openDialog(shop, focusProxy = false) {
 $('fPlatform').onchange = () => {
   const sellerUrl = $('fSellerUrl');
   const previousDefault = sellerUrl.dataset.platformDefault || '';
-  const nextDefault = $('fPlatform').value === 'shopee' ? DEFAULT_SHOPEE_URL : DEFAULT_TIKTOK_URL;
+  const platform = $('fPlatform').value === 'shopee' ? 'shopee' : 'tiktok';
+  const nextDefault = platform === 'shopee' ? DEFAULT_SHOPEE_URL : DEFAULT_TIKTOK_URL;
   if (!sellerUrl.value.trim() || sellerUrl.value.trim() === previousDefault) {
     sellerUrl.value = nextDefault;
   }
