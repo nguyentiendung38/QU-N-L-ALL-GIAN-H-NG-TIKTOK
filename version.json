@@ -1,8 +1,8 @@
 {
-  "version": "2.1.30",
-  "buildNumber": 239,
+  "version": "2.1.31",
+  "buildNumber": 240,
   "updatedAt": "2026-10-14",
-  "notes": "FIX LỖI GIAO DIỆN",
+  "notes": "FIX LỖI THAO TÁC MƯỢT MÀ",
   "files": [
     "main.js",
     "main-core.js",

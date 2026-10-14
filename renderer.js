@@ -39,6 +39,7 @@ let editingId = null;
 let editingMemberId = null;
 let currentDlgLinkMode = 'ads'; // 'ads' | 'cskh'
 let searchQuery = '';
+let searchRenderTimer = null;
 let activeGroup = '__ALL__';
 let activeMember = 'ALL';
 let draggedShopId = null;
@@ -386,7 +387,8 @@ function updateCardsRunningStatus() {
 function getShopMembers(shop) {
   const ids = Array.isArray(shop && shop.memberIds) ? shop.memberIds : [];
   if (!ids.length) return [];
-  return members.filter((m) => ids.includes(m.id));
+  const assignedIds = new Set(ids);
+  return members.filter((member) => assignedIds.has(member.id));
 }
 
 function getMemberShops(memberId) {
@@ -825,9 +827,6 @@ function applyRoleUI() {
   $('memberFilterSelect').classList.toggle('hidden', isMem);
   $('backToAdminBtn').classList.toggle('hidden', !(isMem && currentUser.isAdminPreview));
 
-  renderDeptMonitor();
-  renderAdminDashboard();
-  if (!isMemberMode()) refreshActivityHistory();
 }
 
 async function syncFromCloud(force = false, silent = true) {
@@ -1171,17 +1170,35 @@ function formatProxyBadge(proxy) {
   return raw;
 }
 
-async function checkShopProxy(s, silent = false) {
+async function checkShopProxy(s, silent = false, force = false) {
   if (!s || !s.proxy || !String(s.proxy).trim()) return { ok: true };
-  proxyStatusMap.set(s.id, { state: 'checking' });
-  render();
-  const res = await window.api.checkProxy(s.proxy);
+  const previousStatus = proxyStatusMap.get(s.id);
+  if (
+    previousStatus &&
+    !force &&
+    previousStatus.proxy === s.proxy &&
+    previousStatus.state === 'live' &&
+    Date.now() - previousStatus.checkedAt < 30000
+  ) {
+    return { ok: true, ip: previousStatus.ip, country: previousStatus.country, ms: previousStatus.ms };
+  }
+
+  proxyStatusMap.set(s.id, { state: 'checking', proxy: s.proxy });
+  updateShopProxyBadge(s);
+  let res;
+  try {
+    res = await window.api.checkProxy(s.proxy);
+  } catch (error) {
+    res = { ok: false, error: error && error.message ? error.message : 'Không kiểm tra được Proxy' };
+  }
   if (res && res.ok) {
     proxyStatusMap.set(s.id, {
       state: 'live',
+      proxy: s.proxy,
       ip: res.ip,
       country: res.country,
-      ms: res.ms
+      ms: res.ms,
+      checkedAt: Date.now()
     });
     if (!silent) {
       toast(`🟢 Proxy ${s.name} LIVE! IP: ${res.ip} (${res.ms}ms${res.country ? ' • ' + res.country : ''})`);
@@ -1189,14 +1206,42 @@ async function checkShopProxy(s, silent = false) {
   } else {
     proxyStatusMap.set(s.id, {
       state: 'die',
+      proxy: s.proxy,
       error: (res && res.error) || 'Proxy Die'
     });
     if (!silent) {
       toast(`🔴 Proxy ${s.name} DIE: ${(res && res.error) || 'Không kết nối được'}`);
     }
   }
-  render();
+  updateShopProxyBadge(s);
   return res;
+}
+
+function updateShopProxyBadge(shop) {
+  const card = Array.from(document.querySelectorAll('.card[data-shop-id]'))
+    .find((item) => item.dataset.shopId === shop.id);
+  const badge = card && card.querySelector('.proxy-badge');
+  if (!badge) return;
+
+  const proxyShort = formatProxyBadge(shop.proxy);
+  const savedStatus = proxyStatusMap.get(shop.id);
+  const status = savedStatus && savedStatus.proxy === shop.proxy ? savedStatus : null;
+  badge.className = 'badge proxy-badge';
+  if (status && status.state === 'checking') {
+    badge.textContent = '⏳ Đang check Proxy...';
+    badge.title = 'Đang kiểm tra kết nối Proxy';
+  } else if (status && status.state === 'live' && status.proxy === shop.proxy) {
+    badge.classList.add('live');
+    badge.textContent = `🟢 Live: ${status.ip || proxyShort} (${status.ms}ms${status.country ? '•' + status.country : ''})`;
+    badge.title = 'Proxy hoạt động tốt. Bấm để kiểm tra lại.';
+  } else if (status && status.state === 'die' && status.proxy === shop.proxy) {
+    badge.classList.add('die');
+    badge.textContent = `🔴 Proxy DIE (${proxyShort})`;
+    badge.title = (status.error || 'Proxy lỗi') + ' - Bấm để kiểm tra lại';
+  } else {
+    badge.textContent = `🌐 ${proxyShort} (Bấm check)`;
+    badge.title = 'Bấm vào đây để kiểm tra Proxy Live hay Die';
+  }
 }
 
 function getFilteredShops() {
@@ -1229,7 +1274,15 @@ function renderMemberFilter() {
     activeMember = 'ALL';
   }
 
-  const unassignedCount = shops.filter((s) => getShopMembers(s).length === 0).length;
+  const memberShopCounts = new Map(members.map((member) => [member.id, 0]));
+  let unassignedCount = 0;
+  for (const shop of shops) {
+    const ids = Array.isArray(shop.memberIds) ? shop.memberIds : [];
+    if (!ids.some((id) => memberShopCounts.has(id))) unassignedCount++;
+    for (const id of new Set(ids)) {
+      if (memberShopCounts.has(id)) memberShopCounts.set(id, memberShopCounts.get(id) + 1);
+    }
+  }
   sel.innerHTML = '';
 
   const optAll = document.createElement('option');
@@ -1243,7 +1296,7 @@ function renderMemberFilter() {
   sel.appendChild(optUnassigned);
 
   for (const m of members) {
-    const count = getMemberShops(m.id).length;
+    const count = memberShopCounts.get(m.id) || 0;
     const pMode = getPermModeLabel(m.permMode || 'cskh');
     const opt = document.createElement('option');
     opt.value = m.id;
@@ -1273,14 +1326,20 @@ function renderGroupTabs() {
     new Set(roleShops.map((s) => (s.group || '').trim()).filter(Boolean))
   );
 
-  const runningInRole = roleShops.filter((s) => isShopActive(s.id)).length;
+  const groupCounts = new Map();
+  let runningInRole = 0;
+  for (const shop of roleShops) {
+    const group = (shop.group || '').trim();
+    if (group) groupCounts.set(group, (groupCounts.get(group) || 0) + 1);
+    if (isShopActive(shop.id)) runningInRole++;
+  }
 
   const items = [
     { key: '__ALL__', label: `Tất cả (${roleShops.length})` },
     { key: '__RUNNING__', label: `🟢 Đang mở (${runningInRole})` },
     ...groups.map((g) => ({
       key: g,
-      label: `📁 ${g} (${roleShops.filter((s) => (s.group || '').trim() === g).length})`
+      label: `📁 ${g} (${groupCounts.get(g) || 0})`
     }))
   ];
 
@@ -1316,8 +1375,12 @@ function renderGroupTabs() {
 
 function updateStatsAndBatchBar(filtered) {
   const roleShops = getVisibleShopsForRole();
-  const runningInRole = roleShops.filter((s) => isShopActive(s.id)).length;
-  const localRunningInRole = roleShops.filter((s) => runningIds.has(s.id)).length;
+  let runningInRole = 0;
+  let localRunningInRole = 0;
+  for (const shop of roleShops) {
+    if (isShopActive(shop.id)) runningInRole++;
+    if (runningIds.has(shop.id)) localRunningInRole++;
+  }
 
   $('statsBadge').innerHTML =
     `${isMemberMode() ? 'Được giao' : 'Tổng'}: <b>${roleShops.length}</b> gian • <span class="open-count">🟢 ${runningInRole} đang mở</span>`;
@@ -1390,7 +1453,6 @@ function render() {
   }
 
   filtered.forEach((s) => {
-    const realIndex = shops.findIndex((x) => x.id === s.id);
     const isLocalRunning = runningIds.has(s.id);
     const isRunning = isLocalRunning;
     const shopMode = getShopPermMode(s); // 'cskh' | 'vanhanh' | 'ads'
@@ -1571,7 +1633,8 @@ function render() {
 
     const proxyShort = formatProxyBadge(s.proxy);
     if (proxyShort) {
-      const pState = proxyStatusMap.get(s.id);
+      const savedProxyState = proxyStatusMap.get(s.id);
+      const pState = savedProxyState && savedProxyState.proxy === s.proxy ? savedProxyState : null;
       const pb = document.createElement('span');
       pb.className = 'badge proxy-badge';
 
@@ -1590,7 +1653,7 @@ function render() {
         pb.title = 'Bấm vào đây để kiểm tra Proxy Live hay Die';
       }
 
-      pb.onclick = () => checkShopProxy(s, false);
+      pb.onclick = () => checkShopProxy(s, false, true);
       metaRow.appendChild(pb);
 
       if (!isMemberMode()) {
@@ -1684,7 +1747,13 @@ function render() {
 async function openShop(s, which) {
   // Neu gian chua mo va co cau hinh Proxy, tu dong kiem tra Proxy truoc khi mo
   if (!runningIds.has(s.id) && s.proxy && String(s.proxy).trim()) {
-    toast(`Đang kiểm tra Proxy của ${s.name}...`);
+    const proxyStatus = proxyStatusMap.get(s.id);
+    const hasFreshLiveProxy =
+      proxyStatus &&
+      proxyStatus.proxy === s.proxy &&
+      proxyStatus.state === 'live' &&
+      Date.now() - proxyStatus.checkedAt < 30000;
+    if (!hasFreshLiveProxy) toast(`Đang kiểm tra Proxy của ${s.name}...`);
     const check = await checkShopProxy(s, true);
     if (!check || !check.ok) {
       if (isMemberMode()) {
@@ -1786,7 +1855,7 @@ $('checkAllProxyBtn').onclick = async () => {
   btn.textContent = `⏳ Đang check (${withProxy.length})...`;
   toast(`Đang kiểm tra đồng loạt ${withProxy.length} Proxy...`);
 
-  const results = await Promise.all(withProxy.map((s) => checkShopProxy(s, true)));
+  const results = await Promise.all(withProxy.map((s) => checkShopProxy(s, true, true)));
   const liveCount = results.filter((r) => r && r.ok).length;
   const dieCount = withProxy.length - liveCount;
 
@@ -1823,7 +1892,8 @@ $('testProxyBtn').onclick = async () => {
 // ---- Tim kiem & Chon hang loat ----
 $('searchInput').oninput = (e) => {
   searchQuery = e.target.value || '';
-  render();
+  clearTimeout(searchRenderTimer);
+  searchRenderTimer = setTimeout(render, 120);
 };
 
 $('selectAllChk').onchange = (e) => {
@@ -2404,6 +2474,7 @@ $('saveAdminPassBtn').onclick = async () => {
 
   // Cap nhat badge va thong bao
   applyRoleUI();
+  renderAdminDashboard();
   renderLoginQuickAccounts();
   toast(`🔑 Đổi mật khẩu Admin thành công! Tài khoản: ${user}`);
 };
