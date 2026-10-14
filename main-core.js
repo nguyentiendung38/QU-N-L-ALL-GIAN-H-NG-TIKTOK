@@ -1432,17 +1432,32 @@ function findProfileProcessIds(profileDir) {
     const escapedDir = profileDir.replace(/'/g, "''");
     const script = `
 $profileDir = '${escapedDir}'
-Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' or Name = 'msedge.exe'" |
-  Where-Object {
-    $_.CommandLine -and $_.CommandLine.IndexOf($profileDir, [StringComparison]::OrdinalIgnoreCase) -ge 0
-  } |
-  ForEach-Object { $_.ProcessId }
+try {
+  Get-CimInstance Win32_Process -ErrorAction Stop |
+    Where-Object {
+      $commandLine = [string]$_.CommandLine
+      if (-not $commandLine -or ($_.Name -ine 'chrome.exe' -and $_.Name -ine 'msedge.exe')) {
+        return $false
+      }
+      $profileIndex = $commandLine.IndexOf($profileDir, [StringComparison]::OrdinalIgnoreCase)
+      if ($profileIndex -lt 0) {
+        return $false
+      }
+      $profileEnd = $profileIndex + $profileDir.Length
+      return $profileEnd -eq $commandLine.Length -or $commandLine[$profileEnd] -in @('"', "'", ' ', "\`t")
+    } |
+    ForEach-Object { $_.ProcessId }
+} catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  exit 1
+}
 `;
     let stdout = '';
+    let stderr = '';
     let settled = false;
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'], {
       windowsHide: true,
-      stdio: ['pipe', 'pipe', 'ignore']
+      stdio: ['pipe', 'pipe', 'pipe']
     });
     const timer = setTimeout(() => {
       if (settled) return;
@@ -1458,10 +1473,13 @@ Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' or Name = 'msedge.exe
         .split(/\s+/)
         .map((value) => parseInt(value, 10))
         .filter((value) => value > 0);
-      resolve({ pids, error });
+      resolve({ pids, error: error && stderr.trim() ? `${error}: ${stderr.trim()}` : error });
     };
     child.stdout.on('data', (data) => {
       stdout += data.toString();
+    });
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
     });
     child.once('error', (error) => finish(error.message));
     child.once('close', (code) => finish(code === 0 ? null : `PowerShell thoát với mã ${code}`));

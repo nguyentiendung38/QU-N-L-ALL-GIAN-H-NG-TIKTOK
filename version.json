@@ -1,8 +1,8 @@
 {
-  "version": "2.1.22",
-  "buildNumber": 231,
+  "version": "2.1.23",
+  "buildNumber": 232,
   "updatedAt": "2026-10-14",
-  "notes": "Sửa nút và đóng Chrome theo từng shop",
+  "notes": "Sửa nhận diện tiến trình Chrome theo shop",
   "files": [
     "main.js",
     "main-core.js",
