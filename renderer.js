@@ -39,6 +39,9 @@ let isAdminDashboardCollapsed = (function () {
 let isShopListCollapsed = (function () {
   try { return localStorage.getItem('shopListCollapsed') === '1'; } catch { return false; }
 })();
+let isShopeeListCollapsed = (function () {
+  try { return localStorage.getItem('shopeeListCollapsed') === '1'; } catch { return false; }
+})();
 let selectedIds = new Set();
 let proxyStatusMap = new Map();
 let editingId = null;
@@ -1565,9 +1568,24 @@ function render() {
   const filtered = getFilteredShops();
   updateStatsAndBatchBar(filtered);
 
+  const showingAllPlatforms = activePlatform === 'ALL';
+  const hasVisibleShops = getVisibleShopsForRole().length > 0;
+  const mainShops = showingAllPlatforms
+    ? filtered.filter((shop) => (shop.platform || 'tiktok') !== 'shopee')
+    : filtered;
+  const shopeeShops = showingAllPlatforms
+    ? filtered.filter((shop) => shop.platform === 'shopee')
+    : [];
+
+  const shopListTitle = $('shopListTitle');
+  if (shopListTitle) {
+    shopListTitle.textContent = activePlatform === 'shopee'
+      ? '🛍️ Danh sách gian hàng Shopee'
+      : '🛍️ Danh sách gian hàng TikTok';
+  }
   const shopListCount = $('shopListCount');
   if (shopListCount) {
-    shopListCount.textContent = `${filtered.length} gian hàng`;
+    shopListCount.textContent = `${mainShops.length} gian hàng`;
   }
   const shopListBody = $('shopListBody');
   if (shopListBody) {
@@ -1583,16 +1601,39 @@ function render() {
     };
   }
 
+  const shopeeSection = $('shopListShopeeSection');
+  if (shopeeSection) shopeeSection.classList.toggle('hidden', !showingAllPlatforms);
+  const shopeeCount = $('shopListShopeeCount');
+  if (shopeeCount) shopeeCount.textContent = `${shopeeShops.length} gian hàng`;
+  const shopeeBody = $('shopListShopeeBody');
+  if (shopeeBody) shopeeBody.classList.toggle('collapsed', isShopeeListCollapsed);
+  const shopeeToggle = $('shopListShopeeToggle');
+  if (shopeeToggle) {
+    shopeeToggle.textContent = isShopeeListCollapsed ? '▾ Mở rộng danh sách' : '▴ Thu gọn';
+    shopeeToggle.onclick = () => {
+      isShopeeListCollapsed = !isShopeeListCollapsed;
+      try { localStorage.setItem('shopeeListCollapsed', isShopeeListCollapsed ? '1' : '0'); } catch {}
+      render();
+    };
+  }
+
   const grid = $('grid');
   grid.innerHTML = '';
+  const shopeeGrid = $('gridShopee');
+  if (shopeeGrid) shopeeGrid.innerHTML = '';
   const emptyEl = $('empty');
-  if (filtered.length === 0) {
+  if (mainShops.length === 0) {
     emptyEl.classList.remove('hidden');
-    emptyEl.innerHTML = isMemberMode()
+    emptyEl.innerHTML = isMemberMode() && !hasVisibleShops
       ? `Tài khoản <b>${currentUser.member.name}</b> hiện chưa được Quản trị viên phân công gian hàng nào.<br>Hãy nhờ Admin tích chọn giao shop trong mục <b>👥 Thành viên</b>.`
-      : 'Chưa có gian nào phù hợp.<br>Bấm “+ Thêm gian hàng” để bắt đầu.';
+      : `Chưa có gian hàng ${activePlatform === 'shopee' ? 'Shopee' : 'TikTok'} nào phù hợp.${isMemberMode() ? '' : '<br>Bấm “+ Thêm gian hàng” để bắt đầu.'}`;
   } else {
     emptyEl.classList.add('hidden');
+  }
+  const emptyShopee = $('emptyShopee');
+  if (emptyShopee) {
+    emptyShopee.classList.toggle('hidden', shopeeShops.length > 0);
+    emptyShopee.textContent = 'Chưa có gian hàng Shopee nào phù hợp.';
   }
 
   filtered.forEach((s) => {
@@ -1894,7 +1935,11 @@ function render() {
       card.appendChild(tools);
     }
 
-    grid.appendChild(card);
+    if (showingAllPlatforms && s.platform === 'shopee') {
+      shopeeGrid.appendChild(card);
+    } else {
+      grid.appendChild(card);
+    }
   });
   renderDeptMonitor();
   renderAdminDashboard();

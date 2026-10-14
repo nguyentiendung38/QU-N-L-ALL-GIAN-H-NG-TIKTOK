@@ -381,7 +381,8 @@
     color: var(--muted);
   }
 
-  #grid {
+  #grid,
+  #gridShopee {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
     gap: 14px;
@@ -1551,7 +1552,7 @@
   <section class="shop-list-section" aria-label="Danh sách gian hàng">
     <div class="shop-list-header">
       <div class="shop-list-title">
-        <span>🛍️ Danh sách gian hàng</span>
+        <span id="shopListTitle">🛍️ Danh sách gian hàng TikTok</span>
         <span id="shopListCount" class="shop-list-count"></span>
       </div>
       <button type="button" class="dept-toggle-btn" id="shopListToggle">▴ Thu gọn</button>
@@ -1559,6 +1560,19 @@
     <div id="shopListBody" class="shop-list-body">
       <div id="grid"></div>
       <div id="empty" class="hidden">Chưa có gian nào phù hợp.<br>Bấm “+ Thêm gian hàng” để bắt đầu.</div>
+    </div>
+  </section>
+  <section id="shopListShopeeSection" class="shop-list-section hidden" aria-label="Danh sách gian hàng Shopee">
+    <div class="shop-list-header">
+      <div class="shop-list-title">
+        <span>🛍️ Danh sách gian hàng Shopee</span>
+        <span id="shopListShopeeCount" class="shop-list-count"></span>
+      </div>
+      <button type="button" class="dept-toggle-btn" id="shopListShopeeToggle">▴ Thu gọn</button>
+    </div>
+    <div id="shopListShopeeBody" class="shop-list-body">
+      <div id="gridShopee"></div>
+      <div id="emptyShopee" class="hidden">Chưa có gian hàng Shopee nào phù hợp.</div>
     </div>
   </section>
 </main>
