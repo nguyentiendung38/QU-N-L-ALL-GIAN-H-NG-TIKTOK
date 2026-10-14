@@ -1,8 +1,8 @@
 {
-  "version": "2.1.12",
-  "buildNumber": 221,
-  "updatedAt": "2026-10-13",
-  "notes": "Gom chuc nang vao Avatar Quan tri vien; Ghi nho dang nhap tu dong; Dropdown danh sach nhan vien tren the shop",
+  "version": "2.1.13",
+  "buildNumber": 222,
+  "updatedAt": "2026-10-14",
+  "notes": "Xoa logo icon o header va man hinh dang nhap",
   "files": [
     "index.html",
     "renderer.js",
