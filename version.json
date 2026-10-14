@@ -1,8 +1,8 @@
 {
-  "version": "2.1.26",
-  "buildNumber": 235,
+  "version": "2.1.27",
+  "buildNumber": 236,
   "updatedAt": "2026-10-14",
-  "notes": "bổ sung khung giao diện shop2",
+  "notes": "Thêm dashboard, lịch sử hoạt động và cảnh báo quản lý",
   "files": [
     "main.js",
     "main-core.js",

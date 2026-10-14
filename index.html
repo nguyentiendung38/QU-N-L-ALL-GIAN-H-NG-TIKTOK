@@ -201,6 +201,160 @@
   .shop-list-body.collapsed {
     display: none;
   }
+  .admin-dashboard {
+    background: #161b22;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  }
+  .admin-dashboard-header,
+  .dashboard-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .admin-dashboard-title {
+    color: #e6edf3;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .admin-dashboard-subtitle {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 11.5px;
+  }
+  .dashboard-status {
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .dashboard-status.ok {
+    color: #56d364;
+    background: rgba(46,160,67,.14);
+    border: 1px solid rgba(46,160,67,.35);
+  }
+  .dashboard-status.error {
+    color: #ff7b72;
+    background: rgba(218,54,51,.14);
+    border: 1px solid rgba(218,54,51,.35);
+  }
+  .dashboard-status.pending {
+    color: #e3b341;
+    background: rgba(227,179,65,.12);
+    border: 1px solid rgba(227,179,65,.3);
+  }
+  .dashboard-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .dashboard-stat-card {
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid #2a303a;
+    border-radius: 8px;
+    background: #11161c;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .dashboard-stat-card.has-warning {
+    border-color: rgba(218,54,51,.5);
+  }
+  .dashboard-stat-label {
+    color: var(--muted);
+    font-size: 11.5px;
+  }
+  .dashboard-stat-card strong {
+    color: #f0f6fc;
+    font-size: 23px;
+    line-height: 1.1;
+  }
+  .dashboard-stat-card strong span {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .dashboard-stat-card small {
+    color: var(--muted);
+    font-size: 10.5px;
+  }
+  .dashboard-bottom-grid {
+    display: grid;
+    grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .dashboard-panel {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid #2a303a;
+    border-radius: 8px;
+    background: #11161c;
+  }
+  .dashboard-panel-header h3 {
+    margin: 0;
+    color: #e6edf3;
+    font-size: 12px;
+  }
+  .dashboard-alert-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 9px 0 0;
+    padding-left: 18px;
+    color: #f0b36a;
+    font-size: 11.5px;
+  }
+  .dashboard-all-clear {
+    margin-top: 9px;
+    color: #56d364;
+    font-size: 11.5px;
+  }
+  .dashboard-activity-list {
+    display: flex;
+    flex-direction: column;
+    margin-top: 6px;
+  }
+  .dashboard-activity-row {
+    display: grid;
+    grid-template-columns: 64px minmax(80px, 1fr) minmax(65px, .7fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid #252b34;
+    font-size: 10.5px;
+  }
+  .dashboard-activity-row:last-child {
+    border-bottom: 0;
+  }
+  .dashboard-activity-action {
+    font-weight: 600;
+  }
+  .dashboard-activity-action.open {
+    color: #56d364;
+  }
+  .dashboard-activity-action.close {
+    color: #ff7b72;
+  }
+  .dashboard-activity-shop,
+  .dashboard-activity-user {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dashboard-activity-shop {
+    color: #e6edf3;
+  }
+  .dashboard-activity-user,
+  .dashboard-activity-row time {
+    color: var(--muted);
+  }
 
   #grid {
     display: grid;
@@ -1196,6 +1350,16 @@
     text-align: center;
     font-style: italic;
   }
+  @media (max-width: 900px) {
+    .dashboard-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dashboard-bottom-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 540px) {
+    .dashboard-activity-row {
+      grid-template-columns: 60px minmax(70px, 1fr) auto;
+    }
+    .dashboard-activity-user { display: none; }
+  }
 </style>
 </head>
 <body class="locked">
@@ -1231,7 +1395,7 @@
     <div class="remember-login-wrap">
       <label class="remember-login-label">
         <input type="checkbox" id="rememberLoginChk" checked>
-        <span>Ghi nhớ đăng nhập trên máy này (tự động vào app)</span>
+        <span>Ghi nhớ đăng nhập</span>
       </label>
     </div>
 
@@ -1351,6 +1515,7 @@
 
 <main>
   <div id="deptMonitorSection" class="dept-monitor-section admin-only"></div>
+  <section id="adminDashboardSection" class="admin-dashboard admin-only"></section>
   <div id="notice" class="hidden"></div>
   <section class="shop-list-section" aria-label="Danh sách gian hàng">
     <div class="shop-list-header">

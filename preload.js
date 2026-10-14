@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('api', {
   cloudPush: () => ipcRenderer.invoke('cloud:push'),
   cloudReportActive: (data) => ipcRenderer.invoke('cloud:reportActive', data),
   cloudGetActive: () => ipcRenderer.invoke('cloud:getActive'),
+  cloudAppendActivity: (event) => ipcRenderer.invoke('cloud:appendActivity', event),
+  cloudGetActivity: () => ipcRenderer.invoke('cloud:getActivity'),
   checkOtaUpdate: () => ipcRenderer.invoke('ota:check'),
   applyOtaUpdate: () => ipcRenderer.invoke('ota:apply'),
   restartApp: () => ipcRenderer.invoke('app:restart'),
