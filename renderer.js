@@ -538,7 +538,9 @@ function showLoginScreen() {
   if (currentUser) {
     const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
     const userName = currentUser.isAdminPreview ? 'Admin' : getMyUserName();
-    try { window.api.cloudReportActive({ userKey, userName, shopIds: [] }); } catch {}
+    if (runningIds.size === 0) {
+      try { window.api.cloudReportActive({ userKey, userName, shopIds: [] }); } catch {}
+    }
   }
   currentUser = null;
   document.body.classList.add('locked');
@@ -2135,10 +2137,17 @@ $('pickBrowserBtn').onclick = async () => {
   }, 12000);
   // Dong bo trang thai mo/dong gian hang Online moi 6 giay
   setInterval(refreshOnlineActiveShops, 6000);
-  // Heartbeat dinh ky moi 20 giay de giu trang thai Online neu may nay dang mo gian hang
-  setInterval(() => {
-    if (runningIds.size > 0) reportMyActiveShops();
-  }, 20000);
+  // Heartbeat dinh ky moi 12 giay de luon duy tri trang thai Online & dong bo gian hang dang mo len Cloud
+  setInterval(async () => {
+    if (!currentUser) return;
+    try {
+      const active = await window.api.getRunningShops();
+      if (Array.isArray(active)) {
+        runningIds = new Set(active);
+      }
+      await reportMyActiveShops();
+    } catch {}
+  }, 12000);
 })();
 
 window.addEventListener('beforeunload', () => {
@@ -2146,7 +2155,9 @@ window.addEventListener('beforeunload', () => {
     const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
     const userName = currentUser.isAdminPreview ? 'Admin' : getMyUserName();
     try {
-      window.api.cloudReportActive({ userKey, userName, shopIds: [] });
+      if (runningIds.size === 0) {
+        window.api.cloudReportActive({ userKey, userName, shopIds: [] });
+      }
     } catch {}
   }
 });

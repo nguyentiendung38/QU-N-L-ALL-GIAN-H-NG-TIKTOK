@@ -657,19 +657,20 @@ ipcMain.handle('cloud:getActive', async () => {
     const activeMap = {};
     const usersMap = {};
     const now = Date.now();
-    const TTL = 50 * 1000; // 50 giay timeout phong khi tat may dot ngot
+    const TTL = 180 * 1000; // 3 phut timeout (du rong tranh lech dong ho giua cac may tinh)
 
     for (const item of results) {
       if (!item || !item.data) continue;
       const { who, role, time, shops } = item.data;
-      const isAlive = (now - time <= TTL);
+      const t = Number(time) || 0;
+      const isAlive = (t > 0 && Math.abs(now - t) <= TTL);
       const activeShops = (isAlive && Array.isArray(shops)) ? shops : [];
 
       usersMap[item.key] = {
         userKey: item.key,
         who: who || 'Nhân viên',
         role: role || 'cskh',
-        time,
+        time: t,
         isOnline: isAlive,
         isRunning: isAlive && activeShops.length > 0,
         shops: activeShops
@@ -681,7 +682,7 @@ ipcMain.handle('cloud:getActive', async () => {
             who: who || 'Nhân viên',
             role: role || 'cskh',
             userKey: item.key,
-            time
+            time: t
           };
         }
       }
