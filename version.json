@@ -1,8 +1,8 @@
 {
-  "version": "2.1.47",
-  "buildNumber": 256,
+  "version": "2.1.48",
+  "buildNumber": 257,
   "updatedAt": "2026-10-14",
-  "notes": "Khắc phục HTTP 400 Cloud khi đồng bộ trạng thái shop và hoạt động",
+  "notes": "Khắc phục HTTP 400 Cloud và giữ đủ lịch sử 15 hoạt động gần đây",
   "files": [
     "main.js",
     "main-core.js",

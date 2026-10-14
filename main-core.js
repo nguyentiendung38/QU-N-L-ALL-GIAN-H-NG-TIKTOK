@@ -984,6 +984,56 @@ async function saveCloudActivityEvent(cloudKey, userKey, event) {
   return { ok: true };
 }
 
+async function readCloudActivityIndex(cloudKey, userKey, stored) {
+  const chunkCount = Math.max(0, Math.min(1000, parseInt(stored && stored.indexChunks, 10) || 0));
+  if (!chunkCount) return stored;
+
+  const chunks = [];
+  for (let index = 0; index < chunkCount; index++) {
+    const url = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/historychunks_${encodeURIComponent(userKey)}_${index}`;
+    const response = await httpsReq(url, 'GET');
+    if (response.status !== 200) {
+      throw new Error(cloudResponseError(response, `Không đọc được chỉ mục hoạt động của ${userKey}`));
+    }
+    chunks.push(decodeCloudString(response.body));
+  }
+  const expanded = parseCloudJsonValue(chunks.join(''));
+  if (!expanded || typeof expanded !== 'object') {
+    throw new Error(`Chỉ mục hoạt động của ${userKey} trên Cloud không hợp lệ`);
+  }
+  return expanded;
+}
+
+async function saveCloudActivityIndex(cloudKey, userKey, eventIds) {
+  const valueKey = `history_${userKey}`;
+  const packedIndex = zlib.deflateRawSync(Buffer.from(JSON.stringify({ ids: eventIds }), 'utf8'), { level: 9 })
+    .toString('base64url');
+  let url = activityCloudUrl(cloudKey, valueKey, { ids: eventIds }, true);
+
+  if (url.length > 240) {
+    const chunks = packedIndex.match(/.{1,100}/g) || [];
+    for (let index = 0; index < chunks.length; index++) {
+      const chunkUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${encodeURIComponent(cloudKey)}/historychunks_${encodeURIComponent(userKey)}_${index}/${chunks[index]}`;
+      const chunkResponse = await httpsReq(chunkUrl, 'POST', '');
+      if (chunkResponse.status !== 200) {
+        return {
+          ok: false,
+          error: cloudResponseError(chunkResponse, `Không lưu được chỉ mục hoạt động (phần ${index + 1}/${chunks.length})`)
+        };
+      }
+    }
+    url = activityCloudUrl(cloudKey, valueKey, { indexChunks: chunks.length }, true);
+  }
+
+  if (url.length > 240) {
+    return { ok: false, error: 'Chỉ mục hoạt động vượt giới hạn URL Cloud.' };
+  }
+  const response = await httpsReq(url, 'POST', '');
+  return response.status === 200
+    ? { ok: true }
+    : { ok: false, error: cloudResponseError(response, 'Không lưu được danh sách lịch sử Cloud') };
+}
+
 ipcMain.handle('cloud:appendActivity', async (_e, event) => {
   try {
     if (!event || !['open', 'close', 'login', 'logout'].includes(event.action)) {
@@ -1007,7 +1057,8 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
       return { ok: false, error: current.error || `Không đọc được lịch sử Cloud (HTTP ${current.status})` };
     }
 
-    const stored = current.status === 200 ? parseCloudJsonValue(current.body) : null;
+    const storedValue = current.status === 200 ? parseCloudJsonValue(current.body) : null;
+    const stored = await readCloudActivityIndex(cloudKey, userKey, storedValue);
     const events = Array.isArray(stored && stored.events) ? stored.events : [];
     const eventId = String(event.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
       .replace(/[^a-zA-Z0-9_-]/g, '_')
@@ -1023,7 +1074,7 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
     };
 
     let eventIds = Array.isArray(stored && stored.ids)
-      ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-7)
+      ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-14)
       : [];
     if (!eventIds.length && Array.isArray(stored && stored.events)) {
       const legacyEvents = stored.events
@@ -1043,19 +1094,9 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
 
     const savedEvent = await saveCloudActivityEvent(cloudKey, userKey, nextEvent);
     if (!savedEvent.ok) return savedEvent;
-    eventIds = [...eventIds.filter((id) => id !== eventId), eventId].slice(-8);
-    let indexUrl = activityCloudUrl(cloudKey, valueKey, { ids: eventIds }, true);
-    while (indexUrl.length > 240 && eventIds.length > 1) {
-      eventIds.shift();
-      indexUrl = activityCloudUrl(cloudKey, valueKey, { ids: eventIds }, true);
-    }
-    if (indexUrl.length > 240) {
-      return { ok: false, error: 'Danh sách hoạt động vượt giới hạn URL Cloud.' };
-    }
-    const savedIndex = await httpsReq(indexUrl, 'POST', '');
-    if (savedIndex.status !== 200) {
-      return { ok: false, error: cloudResponseError(savedIndex, 'Không lưu được danh sách lịch sử Cloud') };
-    }
+    eventIds = [...eventIds.filter((id) => id !== eventId), eventId].slice(-15);
+    const savedIndex = await saveCloudActivityIndex(cloudKey, userKey, eventIds);
+    if (!savedIndex.ok) return savedIndex;
     return { ok: true, event: nextEvent };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -1084,12 +1125,13 @@ ipcMain.handle('cloud:getActivity', async () => {
       if (response.status !== 200) {
         return { events: [], error: response.error || `HTTP ${response.status}` };
       }
-      const stored = parseCloudJsonValue(response.body);
+      const storedValue = parseCloudJsonValue(response.body);
+      const stored = await readCloudActivityIndex(cloudKey, userKey, storedValue);
       if (Array.isArray(stored && stored.events)) {
         return { events: stored.events, error: null };
       }
       const eventIds = Array.isArray(stored && stored.ids)
-        ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-7)
+        ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-15)
         : [];
       const eventResults = await Promise.all(eventIds.map(async (eventId) => {
         const eventKey = `event_${userKey}_${eventId}`;
