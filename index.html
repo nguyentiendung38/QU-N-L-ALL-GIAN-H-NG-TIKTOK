@@ -1386,7 +1386,7 @@
 
     <div id="loginError" class="login-error hidden"></div>
 
-    <label>Tài khoản đăng nhập (Username)</label>
+    <label>Tài khoản đăng nhập</label>
     <input type="text" id="loginUser" placeholder="Nhập tài khoản (VD: admin hoặc tên TK nhân viên)">
 
     <label>Mật khẩu (Password)</label>
@@ -1618,6 +1618,16 @@
           <input type="text" id="mAdsUrl" style="font-size:12px;padding:6px 8px;" placeholder="https://seller-vn.tiktok.com/ads-creation/dashboard?...">
         </div>
       </div>
+
+      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;">
+        <input type="checkbox" id="mGmvExtensionEnabled" style="width:auto;margin-top:2px;">
+        <span>
+          Cho phép dùng extension GMV Max
+          <small style="display:block;color:var(--muted);font-weight:400;margin-top:3px;">
+            Mặc định tắt. Có hiệu lực khi nhân viên mở lại Chrome; nếu Chrome đang mở thì cần đóng shop rồi mở lại.
+          </small>
+        </span>
+      </label>
 
       <label>Số điện thoại</label>
       <input type="text" id="mPhone">

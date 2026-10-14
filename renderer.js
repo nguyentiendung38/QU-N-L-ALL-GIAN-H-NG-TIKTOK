@@ -174,6 +174,7 @@ async function reportMyActiveShops() {
       userName,
       role,
       shopIds,
+      latestActivity: shopActivityLog.find((event) => event.synced) || null,
       proxyIssues: getVisibleShopsForRole()
         .filter((shop) => proxyStatusMap.get(shop.id)?.state === 'die')
         .map((shop) => shop.id),
@@ -229,6 +230,15 @@ async function refreshOnlineActiveShops() {
         activeCloudOk = true;
         activeStatusFetchError = '';
         onlineActiveUsers = res.users || {};
+        const knownEventIds = new Set(sharedActivityLog.map((event) => event.id));
+        Object.values(onlineActiveUsers).forEach((user) => {
+          const event = user && user.latestActivity;
+          if (event && event.id && !knownEventIds.has(event.id)) {
+            sharedActivityLog.push(event);
+            knownEventIds.add(event.id);
+          }
+        });
+        sharedActivityLog = sharedActivityLog.slice(-100);
       }
       if (currentUser) {
         updateCardsRunningStatus();
@@ -255,19 +265,22 @@ function saveLocalActivity(event) {
   }
 }
 
-async function recordShopActivity(action, shop) {
+function recordShopActivity(action, shop = null) {
   const event = {
     id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     action,
     userKey: currentUser && currentUser.isAdminPreview ? 'admin' : getMyUserKey(),
     userName: currentUser && currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName(),
-    shopId: shop.id,
-    shopName: shop.name,
+    shopId: shop ? shop.id : '',
+    shopName: shop ? shop.name : '',
     time: Date.now(),
     synced: false
   };
   saveLocalActivity(event);
-  await flushPendingActivity();
+  flushPendingActivity().catch((error) => {
+    console.warn('Không đồng bộ được hoạt động:', error);
+  });
+  return event;
 }
 
 async function flushPendingActivity() {
@@ -406,6 +419,10 @@ function getOpenActionForMode(permMode) {
   if (permMode === 'cskh') return 'cskh_orders';
   if (permMode === 'ads') return 'ads';
   return 'tiktok';
+}
+
+function canCurrentUserUseGmvExtension() {
+  return !isMemberMode() || currentUser.member.gmvExtensionEnabled === true;
 }
 
 function getShopPermMode(shop) {
@@ -702,11 +719,17 @@ function renderAdminDashboard() {
       ? '<span class="dashboard-status ok">☁ Đang hoạt động</span>'
       : '<span class="dashboard-status pending">☁ Đang kiểm tra</span>';
   const activityRows = activity.slice(0, 8).map((event) => {
-    const isOpen = event.action === 'open';
+    const isOpen = event.action === 'open' || event.action === 'login';
+    const actionLabel = {
+      open: 'Mở shop',
+      close: 'Đóng shop',
+      login: 'Đăng nhập',
+      logout: 'Đăng xuất'
+    }[event.action] || 'Hoạt động';
     return `
       <div class="dashboard-activity-row">
-        <span class="dashboard-activity-action ${isOpen ? 'open' : 'close'}">${isOpen ? 'Mở shop' : 'Đóng shop'}</span>
-        <span class="dashboard-activity-shop" title="${escapeHtml(event.shopName || '')}">${escapeHtml(event.shopName || 'Shop')}</span>
+        <span class="dashboard-activity-action ${isOpen ? 'open' : 'close'}">${actionLabel}</span>
+        <span class="dashboard-activity-shop" title="${escapeHtml(event.shopName || '')}">${escapeHtml(event.shopName || (event.action === 'login' || event.action === 'logout' ? 'Tài khoản' : 'Shop'))}</span>
         <span class="dashboard-activity-user">${escapeHtml(event.userName || 'Người dùng')}</span>
         <time>${escapeHtml(formatActivityTime(event.time))}</time>
       </div>
@@ -904,9 +927,20 @@ function showLoginScreen() {
   if (currentUser) {
     const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
     const userName = currentUser.isAdminPreview ? 'Admin' : getMyUserName();
-    if (runningIds.size === 0) {
-      try { window.api.cloudReportActive({ userKey, userName, shopIds: [] }); } catch {}
-    }
+    const logoutEvent = recordShopActivity('logout');
+    window.api.cloudReportActive({
+      userKey,
+      userName,
+      role: isMemberMode() ? currentUser.member.permMode || 'cskh' : 'admin',
+      shopIds: Array.from(runningIds),
+      latestActivity: logoutEvent,
+      proxyIssues: getVisibleShopsForRole()
+        .filter((shop) => proxyStatusMap.get(shop.id)?.state === 'die')
+        .map((shop) => shop.id),
+      activityPending: shopActivityLog.filter((event) => !event.synced).length
+    }).catch((error) => {
+      console.warn('Không đồng bộ được trạng thái khi đăng xuất:', error);
+    });
   }
   currentUser = null;
   document.body.classList.add('locked');
@@ -983,6 +1017,7 @@ async function doLogin(silent = false) {
     } else if (!silent) {
       await window.api.clearSavedLogin();
     }
+    recordShopActivity('login');
     toast('👑 Đã đăng nhập quyền Quản trị viên (Admin)!');
     reportMyActiveShops();
     refreshOnlineActiveShops();
@@ -1004,6 +1039,7 @@ async function doLogin(silent = false) {
     } else if (!silent) {
       await window.api.clearSavedLogin();
     }
+    recordShopActivity('login');
     const assignedCount = getMemberShops(foundMember.id).length;
     toast(`👤 Xin chào ${foundMember.name}! Bạn đang quản lý ${assignedCount} gian hàng.`);
     reportMyActiveShops();
@@ -1783,14 +1819,18 @@ async function openShop(s, which) {
     if (which === 'cskh_orders') overrideUrl = currentUser.member.cskhOrdersUrl || s.cskhOrdersUrl || DEFAULT_CSKH_ORDERS;
   }
 
-  let r = await window.api.openShop(s.id, which, overrideUrl);
+  const allowGmvExtension = canCurrentUserUseGmvExtension();
+  let r = await window.api.openShop(s.id, which, overrideUrl, allowGmvExtension);
   if (r && !r.ok && r.error === 'Thieu link de mo') {
-    r = await window.api.openShop(s.id, 'ads', overrideUrl);
+    r = await window.api.openShop(s.id, 'ads', overrideUrl, allowGmvExtension);
   }
   if (r && r.ok) {
     runningIds.add(s.id);
     if (!r.alreadyOpen) recordShopActivity('open', s);
     render();
+    if (r.extensionAccessNeedsRestart) {
+      toast('GMV Max đã bị tắt cho tài khoản này. Nếu extension còn hiện, hãy đóng Chrome shop rồi mở lại.');
+    }
     const reportPromise = reportMyActiveShops();
     reportPromise.then((reportResult) => {
       if (reportResult && !reportResult.ok && !reportResult.queued) {
@@ -1913,7 +1953,7 @@ $('openSelectedBtn').onclick = async () => {
   let openedCount = 0;
   for (let i = 0; i < list.length; i++) {
     const mode = getOpenActionForMode(getShopPermMode(list[i]));
-    const result = await window.api.openShop(list[i].id, mode);
+    const result = await window.api.openShop(list[i].id, mode, '', canCurrentUserUseGmvExtension());
     if (result && result.ok) {
       runningIds.add(list[i].id);
       if (!result.alreadyOpen) recordShopActivity('open', list[i]);
@@ -2177,6 +2217,7 @@ function resetMemberForm() {
   $('mUsername').value = '';
   $('mPassword').value = '123456';
   $('mPermMode').value = 'cskh';
+  $('mGmvExtensionEnabled').checked = false;
   if ($('mCskhChat')) $('mCskhChat').value = '';
   $('mCskhOrders').value = DEFAULT_CSKH_ORDERS;
   if ($('mAdsUrl')) $('mAdsUrl').value = DEFAULT_ADS;
@@ -2196,6 +2237,7 @@ function startEditMember(m) {
   $('mUsername').value = m.username || slugUsername(m.name) || '';
   $('mPassword').value = m.password || '123456';
   $('mPermMode').value = m.permMode || 'cskh';
+  $('mGmvExtensionEnabled').checked = m.gmvExtensionEnabled === true;
   if ($('mCskhChat')) $('mCskhChat').value = '';
   $('mCskhOrders').value = m.cskhOrdersUrl || DEFAULT_CSKH_ORDERS;
   if ($('mAdsUrl')) $('mAdsUrl').value = m.adsUrl || DEFAULT_ADS;
@@ -2272,7 +2314,9 @@ function renderMembersListModal() {
 
     const sub = document.createElement('div');
     sub.className = 'member-sub';
-    sub.textContent = `Đang được phân công: ${mShops.length} gian hàng` + (m.phone ? ` • 📞 ${m.phone}` : '');
+    sub.textContent = `Đang được phân công: ${mShops.length} gian hàng` +
+      (m.phone ? ` • 📞 ${m.phone}` : '') +
+      (m.gmvExtensionEnabled === true ? ' • 🧩 GMV Max: Đã bật' : ' • 🧩 GMV Max: Đã tắt');
 
     info.append(nameRow, sub);
     head.append(av, info);
@@ -2328,7 +2372,7 @@ function renderMembersListModal() {
         toast(`Đang mở ${mShops.length} gian của ${m.name} (${getPermModeLabel(pMode)})...`);
         let openedCount = 0;
         for (let i = 0; i < mShops.length; i++) {
-          const result = await window.api.openShop(mShops[i].id, openMode);
+          const result = await window.api.openShop(mShops[i].id, openMode, '', m.gmvExtensionEnabled === true);
           if (result && result.ok) {
             runningIds.add(mShops[i].id);
             openedCount++;
@@ -2340,6 +2384,19 @@ function renderMembersListModal() {
       'Mở đồng loạt tất cả các gian của thành viên này'
     );
     openAllMemberBtn.disabled = mShops.length === 0;
+
+    const toggleGmvExtensionBtn = mkBtn(
+      m.gmvExtensionEnabled === true ? '🧩 Tắt GMV Max' : '🧩 Bật GMV Max',
+      'small',
+      async () => {
+        m.gmvExtensionEnabled = m.gmvExtensionEnabled !== true;
+        await persistMembers();
+        renderMembersListModal();
+        render();
+        toast(`Đã ${m.gmvExtensionEnabled ? 'bật' : 'tắt'} extension GMV Max cho ${m.name}.`);
+      },
+      'Cấp hoặc thu hồi quyền dùng extension GMV Max cho tài khoản này'
+    );
 
     const copyCredBtn = mkBtn(
       '📋 Copy TK/MK gửi NV',
@@ -2374,7 +2431,7 @@ function renderMembersListModal() {
       toast(`Đã xóa thành viên ${m.name} (Đã đồng bộ Online)`);
     });
 
-    actions.append(viewAsMemberBtn, openAllMemberBtn, copyCredBtn, editBtn, delBtn);
+    actions.append(viewAsMemberBtn, openAllMemberBtn, toggleGmvExtensionBtn, copyCredBtn, editBtn, delBtn);
     card.appendChild(actions);
     box.appendChild(card);
   });
@@ -2506,6 +2563,7 @@ $('mSaveBtn').onclick = async () => {
   const cskhChatUrl = ($('mCskhChat') && $('mCskhChat').value.trim()) || cskhOrdersUrl;
   const phone = $('mPhone').value.trim();
   const color = $('mColor').value || '#388bfd';
+  const gmvExtensionEnabled = $('mGmvExtensionEnabled').checked;
   const checkedShopIds = new Set(
     Array.from($('mShopsChecklist').querySelectorAll('input[type="checkbox"]:checked')).map((c) => c.value)
   );
@@ -2514,11 +2572,11 @@ $('mSaveBtn').onclick = async () => {
   if (memberId) {
     const target = members.find((x) => x.id === memberId);
     if (target) {
-      Object.assign(target, { name, username, password, permMode, role, adsUrl, cskhChatUrl, cskhOrdersUrl, phone, color });
+      Object.assign(target, { name, username, password, permMode, role, adsUrl, cskhChatUrl, cskhOrdersUrl, phone, color, gmvExtensionEnabled });
     }
   } else {
     memberId = 'mem_' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
-    members.push({ id: memberId, name, username, password, permMode, role, adsUrl, cskhChatUrl, cskhOrdersUrl, phone, color });
+    members.push({ id: memberId, name, username, password, permMode, role, adsUrl, cskhChatUrl, cskhOrdersUrl, phone, color, gmvExtensionEnabled });
   }
 
   // Cap nhat danh sach shop duoc giao cho thanh vien nay va gan luon duong link CSKH / Van hanh / Ads

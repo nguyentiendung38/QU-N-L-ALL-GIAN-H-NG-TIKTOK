@@ -615,6 +615,22 @@ ipcMain.handle('cloud:pull', (_e, force) => pullFromCloud(Boolean(force)));
 const cloudActiveCache = new Map(); // userKey -> { who, role, time, shops, lastFetched }
 let lastActiveFetchWarningAt = 0;
 
+function normalizeActiveActivity(event, userKey, userName) {
+  if (!event || !['open', 'close', 'login', 'logout'].includes(event.action)) return null;
+  const isShopEvent = event.action === 'open' || event.action === 'close';
+  const id = String(event.id || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+  if (!id) return null;
+  return {
+    id,
+    action: event.action,
+    userKey,
+    userName,
+    shopId: isShopEvent ? String(event.shopId || '').trim().slice(0, 80) : '',
+    shopName: isShopEvent ? String(event.shopName || '').trim().slice(0, 80) : '',
+    time: Number(event.time) || Date.now()
+  };
+}
+
 // Dong bo trang thai dang mo / dang dong cua cac gian hang qua Cloud giua may Admin va Nhan vien
 ipcMain.handle('cloud:reportActive', async (_e, data) => {
   try {
@@ -629,6 +645,7 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
       ? data.proxyIssues.map((id) => String(id).slice(0, 100)).slice(0, 100)
       : [];
     const activityPending = Math.max(0, Math.min(100, parseInt(data && data.activityPending, 10) || 0));
+    const latestActivity = normalizeActiveActivity(data && data.latestActivity, rawKey, who);
     const now = Date.now();
     const payload = {
       who,
@@ -637,7 +654,8 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
       time: now,
       shops,
       proxyIssues,
-      activityPending
+      activityPending,
+      latestActivity
     };
 
     // Cap nhat cache cuc bo ngay lap tuc de may nay thay trang thai ngay
@@ -648,6 +666,7 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
       shops,
       proxyIssues,
       activityPending,
+      latestActivity,
       lastFetched: now
     });
 
@@ -700,6 +719,7 @@ ipcMain.handle('cloud:getActive', async () => {
                   shops: Array.isArray(parsed.shops) ? parsed.shops : [],
                   proxyIssues: Array.isArray(parsed.proxyIssues) ? parsed.proxyIssues : [],
                   activityPending: Math.max(0, Math.min(100, parseInt(parsed.activityPending, 10) || 0)),
+                  latestActivity: normalizeActiveActivity(parsed.latestActivity, parsed.userKey || k, parsed.who || 'Nhân viên'),
                   lastFetched: Date.now()
                 });
                 return;
@@ -736,7 +756,8 @@ ipcMain.handle('cloud:getActive', async () => {
           isRunning: false,
           shops: [],
           proxyIssues: [],
-          activityPending: 0
+          activityPending: 0,
+          latestActivity: null
         };
         continue;
       }
@@ -754,7 +775,8 @@ ipcMain.handle('cloud:getActive', async () => {
         isRunning: isAlive && activeShops.length > 0,
         shops: activeShops,
         proxyIssues: Array.isArray(item.proxyIssues) ? item.proxyIssues : [],
-        activityPending: Math.max(0, Math.min(100, parseInt(item.activityPending, 10) || 0))
+        activityPending: Math.max(0, Math.min(100, parseInt(item.activityPending, 10) || 0)),
+        latestActivity: item.latestActivity || null
       };
 
       if (isAlive && Array.isArray(shops)) {
@@ -811,14 +833,15 @@ async function saveCloudActivityEvent(cloudKey, userKey, event) {
 
 ipcMain.handle('cloud:appendActivity', async (_e, event) => {
   try {
-    if (!event || !['open', 'close'].includes(event.action)) {
+    if (!event || !['open', 'close', 'login', 'logout'].includes(event.action)) {
       return { ok: false, error: 'Loại hoạt động không hợp lệ' };
     }
     const rawKey = String(event.userKey || 'admin').trim();
     const userKey = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
     const shopId = String(event.shopId || '').trim().slice(0, 80);
     const shopName = String(event.shopName || '').trim().slice(0, 80);
-    if (!userKey || !shopId || !shopName) {
+    const isShopEvent = event.action === 'open' || event.action === 'close';
+    if (!userKey || (isShopEvent && (!shopId || !shopName))) {
       return { ok: false, error: 'Thiếu thông tin nhân viên hoặc shop' };
     }
 
@@ -841,8 +864,8 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
       action: event.action,
       userKey,
       userName: String(event.userName || 'Nhân viên').trim().slice(0, 40),
-      shopId,
-      shopName,
+      shopId: isShopEvent ? shopId : '',
+      shopName: isShopEvent ? shopName : '',
       time: Number(event.time) || Date.now()
     };
 
@@ -851,7 +874,7 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
       : [];
     if (!eventIds.length && Array.isArray(stored && stored.events)) {
       const legacyEvents = stored.events
-        .filter((item) => item && item.id && ['open', 'close'].includes(item.action))
+        .filter((item) => item && item.id && ['open', 'close', 'login', 'logout'].includes(item.action))
         .slice(-14);
       for (const oldEvent of legacyEvents) {
         const safeEvent = {
@@ -1961,7 +1984,7 @@ function loadExtensionViaCDP(profileDir, extDir) {
 }
 
 // Mo gian: neu Chrome cua gian da mo thi dua len tren, neu chua thi chay Chrome voi profile rieng.
-ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
+ipcMain.handle('shop:open', async (_e, id, which, overrideUrl, allowGmvExtension) => {
   const shop = readShops().find((s) => s.id === id);
   if (!shop) return { ok: false, error: 'Khong tim thay gian hang' };
 
@@ -1997,7 +2020,8 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
     } catch {}
   }
 
-  const extDir = getExtensionDir();
+  const extensionAllowed = allowGmvExtension === true;
+  const extDir = extensionAllowed ? getExtensionDir() : null;
 
   // Chi quet cua so cu khi profile dang chay; tranh khoi dong PowerShell tren moi lan mo shop.
   const hasExistingProcess = Boolean((knownPid && isProcessAlive(knownPid)) || isProfileLocked(dir));
@@ -2013,11 +2037,15 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
       loadExtensionViaCDP(dir, extDir);
     }
     notifyRunningChanged(true);
-    return { ok: true, alreadyOpen: true };
+    return {
+      ok: true,
+      alreadyOpen: true,
+      extensionAccessNeedsRestart: !extensionAllowed
+    };
   }
 
   // Chuan bi extension TikTok GMV Video Selector de tu dong nap vao Chrome
-  ensureExtensionPinned(dir);
+  if (extensionAllowed && extDir) ensureExtensionPinned(dir);
   try {
     fs.unlinkSync(path.join(dir, 'DevToolsActivePort'));
   } catch {}
@@ -2029,6 +2057,7 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
     '--no-default-browser-check',
     '--new-window'
   ];
+  if (!extensionAllowed) args.push('--disable-extensions');
 
   if (shop.proxy && String(shop.proxy).trim()) {
     const parsedProxy = parseProxyString(shop.proxy);
@@ -2042,7 +2071,7 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
     stopProxyForwarder(id);
   }
 
-  if (extDir) {
+  if (extensionAllowed && extDir) {
     args.push(
       '--enable-unsafe-extension-debugging',
       '--remote-debugging-port=0',
@@ -2069,7 +2098,7 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
 
       notifyRunningChanged(true);
 
-      if (extDir) {
+      if (extensionAllowed && extDir) {
         loadExtensionViaCDP(dir, extDir);
       }
 
