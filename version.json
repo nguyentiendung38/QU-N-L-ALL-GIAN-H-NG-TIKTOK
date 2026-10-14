@@ -1,8 +1,8 @@
 {
-  "version": "2.1.21",
-  "buildNumber": 230,
+  "version": "2.1.22",
+  "buildNumber": 231,
   "updatedAt": "2026-10-14",
-  "notes": "Cập nhật OTA nền và đồng bộ trạng thái shop",
+  "notes": "Sửa nút và đóng Chrome theo từng shop",
   "files": [
     "main.js",
     "main-core.js",

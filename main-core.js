@@ -1433,7 +1433,9 @@ function findProfileProcessIds(profileDir) {
     const script = `
 $profileDir = '${escapedDir}'
 Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' or Name = 'msedge.exe'" |
-  Where-Object { $_.CommandLine -and $_.CommandLine.Contains($profileDir) } |
+  Where-Object {
+    $_.CommandLine -and $_.CommandLine.IndexOf($profileDir, [StringComparison]::OrdinalIgnoreCase) -ge 0
+  } |
   ForEach-Object { $_.ProcessId }
 `;
     let stdout = '';
@@ -1474,7 +1476,7 @@ function killShopPid(pid) {
       stdio: 'ignore'
     });
     child.once('error', (error) => resolve(error.message));
-    child.once('close', () => resolve(null));
+    child.once('close', (code) => resolve(code === 0 ? null : `taskkill thoát với mã ${code} cho PID ${pid}`));
   });
 }
 
@@ -1531,7 +1533,7 @@ async function closeShopProcess(id) {
       return { ok: false, error: 'Chrome vẫn đang mở nhưng không tìm thấy tiến trình của shop để đóng' };
     }
     if (!pids.length) return finish();
-    await Promise.all(pids.map(killShopPid));
+    const killErrors = (await Promise.all(pids.map(killShopPid))).filter(Boolean);
     pid = pids.includes(pid) ? pid : 0;
     if (!(await waitForShopExit(id, pid, 2000))) {
       return { ok: false, error: 'Chưa đóng được Chrome. Hãy thử đóng lại hoặc kiểm tra cửa sổ Chrome của shop.' };
@@ -1541,7 +1543,8 @@ async function closeShopProcess(id) {
       return { ok: false, error: remaining.error };
     }
     if (remaining.pids.length || isProfileLocked(dir)) {
-      return { ok: false, error: 'Chrome vẫn còn chạy sau khi yêu cầu đóng. Hãy thử lại.' };
+      const detail = killErrors.length ? ` (${killErrors.join('; ')})` : '';
+      return { ok: false, error: `Chrome vẫn còn chạy sau khi yêu cầu đóng. Hãy thử lại.${detail}` };
     }
     return finish();
   } else if (pid && isProcessAlive(pid)) {

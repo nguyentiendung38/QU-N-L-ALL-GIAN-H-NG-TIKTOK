@@ -1348,7 +1348,7 @@ async function openShop(s, which) {
   }
   if (r && r.ok) {
     runningIds.add(s.id);
-    updateCardsRunningStatus();
+    render();
     const reportPromise = reportMyActiveShops();
     const openedMessage = r.alreadyOpen
       ? 'Cửa sổ ' + s.name + ' đang mở (đã đưa lên trước)'
@@ -1382,7 +1382,7 @@ async function closeSingleShop(s) {
     const r = await window.api.closeShop(s.id);
     if (r && r.ok) {
       runningIds.delete(s.id);
-      updateCardsRunningStatus();
+      render();
       reportMyActiveShops();
       toast('Đã đóng Chrome của gian ' + s.name);
     } else {
@@ -1500,7 +1500,7 @@ $('closeAllBtn').onclick = async () => {
       .filter((_shop, index) => results[index] && results[index].ok)
       .map((shop) => shop.id);
     closedIds.forEach((id) => runningIds.delete(id));
-    updateCardsRunningStatus();
+    render();
     reportMyActiveShops();
     const failedCount = roleRunning.length - closedIds.length;
     toast(failedCount
@@ -1513,7 +1513,7 @@ $('closeAllBtn').onclick = async () => {
         ? r.closedIds
         : roleRunning.slice(0, r.closedCount || 0).map((shop) => shop.id);
       closedIds.forEach((id) => runningIds.delete(id));
-      updateCardsRunningStatus();
+      render();
       reportMyActiveShops();
       toast(r.ok
         ? `Đã đóng toàn bộ ${r.closedCount} cửa sổ Chrome!`
@@ -2163,7 +2163,7 @@ $('pickBrowserBtn').onclick = async () => {
   window.api.onRunningChanged(async (ids) => {
     runningIds = new Set(ids || []);
     if (currentUser) {
-      updateCardsRunningStatus();
+      render();
       await reportMyActiveShops();
     }
   });
@@ -2202,7 +2202,13 @@ $('pickBrowserBtn').onclick = async () => {
     try {
       const active = await window.api.getRunningShops();
       if (Array.isArray(active)) {
-        runningIds = new Set(active);
+        const nextRunningIds = new Set(active);
+        const changed = nextRunningIds.size !== runningIds.size ||
+          Array.from(nextRunningIds).some((id) => !runningIds.has(id));
+        if (changed) {
+          runningIds = nextRunningIds;
+          render();
+        }
       }
       await reportMyActiveShops();
     } catch {}
