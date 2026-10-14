@@ -79,6 +79,13 @@ function readAuthObj() {
   };
 }
 
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 15000,
+  maxSockets: 30,
+  timeout: 8000
+});
+
 function httpsReq(url, method = 'GET', body = null, extraHeaders = {}) {
   return new Promise((resolve) => {
     try {
@@ -88,6 +95,7 @@ function httpsReq(url, method = 'GET', body = null, extraHeaders = {}) {
           hostname: u.hostname,
           path: u.pathname + u.search,
           method,
+          agent: httpsAgent,
           timeout: 8000,
           headers: {
             'User-Agent': 'Mozilla/5.0',
@@ -598,6 +606,9 @@ ipcMain.handle('auth:clearSavedLogin', () => {
 ipcMain.handle('cloud:push', () => pushToCloudNow());
 ipcMain.handle('cloud:pull', (_e, force) => pullFromCloud(Boolean(force)));
 
+// Cache trang thai hoat dong online trong bo nho de chong lag / chong chop giat khi mang rot nhip
+const cloudActiveCache = new Map(); // userKey -> { who, role, time, shops, lastFetched }
+
 // Dong bo trang thai dang mo / dang dong cua cac gian hang qua Cloud giua may Admin va Nhan vien
 ipcMain.handle('cloud:reportActive', async (_e, data) => {
   try {
@@ -608,19 +619,32 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
     const who = (data && data.userName ? String(data.userName).trim() : 'Admin');
     const role = (data && data.role ? String(data.role).trim() : 'cskh');
     const shops = (data && Array.isArray(data.shopIds)) ? data.shopIds : [];
+    const now = Date.now();
     const payload = {
       who,
       role,
       userKey: rawKey,
-      time: Date.now(),
+      time: now,
       shops
     };
+
+    // Cap nhat cache cuc bo ngay lap tuc de may nay thay trang thai ngay
+    cloudActiveCache.set(userKey, {
+      who,
+      role,
+      time: now,
+      shops,
+      lastFetched: now
+    });
+
     const b64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-    const r = await httpsReq(
-      `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/act_${userKey}/${b64}`,
-      'POST',
-      ''
-    );
+    const url = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/act_${userKey}/${b64}`;
+    let r = await httpsReq(url, 'POST', '');
+    if (r.status !== 200) {
+      // Tu dong thu lai 1 lan sau 400ms phong khi mang bi rot nhip
+      await new Promise((res) => setTimeout(res, 400));
+      r = await httpsReq(url, 'POST', '');
+    }
     return { ok: r.status === 200 };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -635,7 +659,8 @@ ipcMain.handle('cloud:getActive', async () => {
     const keysToCheck = ['admin', ...members.map((m) => String(m.id).trim().replace(/[^a-zA-Z0-9_-]/g, '_'))];
     const uniqueKeys = Array.from(new Set(keysToCheck));
 
-    const results = await Promise.all(
+    // Tai song song trang thai cua tat ca nhan vien
+    await Promise.all(
       uniqueKeys.map(async (k) => {
         try {
           const res = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${cloudKey}/act_${k}`, 'GET');
@@ -644,30 +669,53 @@ ipcMain.handle('cloud:getActive', async () => {
             if (raw.startsWith('"') && raw.endsWith('"')) {
               try { raw = JSON.parse(raw); } catch {}
             }
-            if (raw && raw !== 'OFF') {
+            if (raw && raw !== 'OFF' && raw.length > 5) {
               const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
-              return { key: k, data: parsed };
+              if (parsed && typeof parsed === 'object') {
+                cloudActiveCache.set(k, {
+                  who: parsed.who || 'Nhân viên',
+                  role: parsed.role || 'cskh',
+                  time: Number(parsed.time) || 0,
+                  shops: Array.isArray(parsed.shops) ? parsed.shops : [],
+                  lastFetched: Date.now()
+                });
+                return;
+              }
+            } else if (raw === 'OFF') {
+              cloudActiveCache.delete(k);
+              return;
             }
           }
         } catch {}
-        return null;
       })
     );
 
     const activeMap = {};
     const usersMap = {};
     const now = Date.now();
-    const TTL = 180 * 1000; // 3 phut timeout (du rong tranh lech dong ho giua cac may tinh)
+    const TTL = 180 * 1000; // 3 phut timeout
 
-    for (const item of results) {
-      if (!item || !item.data) continue;
-      const { who, role, time, shops } = item.data;
+    for (const k of uniqueKeys) {
+      const item = cloudActiveCache.get(k);
+      if (!item) {
+        usersMap[k] = {
+          userKey: k,
+          who: 'Nhân viên',
+          role: 'cskh',
+          time: 0,
+          isOnline: false,
+          isRunning: false,
+          shops: []
+        };
+        continue;
+      }
+      const { who, role, time, shops } = item;
       const t = Number(time) || 0;
       const isAlive = (t > 0 && Math.abs(now - t) <= TTL);
       const activeShops = (isAlive && Array.isArray(shops)) ? shops : [];
 
-      usersMap[item.key] = {
-        userKey: item.key,
+      usersMap[k] = {
+        userKey: k,
         who: who || 'Nhân viên',
         role: role || 'cskh',
         time: t,
@@ -681,7 +729,7 @@ ipcMain.handle('cloud:getActive', async () => {
           activeMap[sid] = {
             who: who || 'Nhân viên',
             role: role || 'cskh',
-            userKey: item.key,
+            userKey: k,
             time: t
           };
         }

@@ -1,8 +1,8 @@
 {
-  "version": "2.1.15",
-  "buildNumber": 224,
+  "version": "2.1.16",
+  "buildNumber": 225,
   "updatedAt": "2026-10-14",
-  "notes": "Fix TTL va realtime heartbeat dong bo trang thai mo shop giua CSKH va Admin",
+  "notes": "Chong lag, giu cache trang thai online on dinh khong bi chop tat",
   "files": [
     "index.html",
     "renderer.js",

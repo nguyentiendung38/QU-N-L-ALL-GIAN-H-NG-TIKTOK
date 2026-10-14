@@ -91,25 +91,34 @@ function getMyUserName() {
   return (authConfig && authConfig.adminUser) || 'Admin';
 }
 
+let isReportingActive = false;
 async function reportMyActiveShops() {
-  if (!currentUser) return;
+  if (!currentUser || isReportingActive) return;
+  isReportingActive = true;
   try {
     const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
     const userName = currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName();
     const role = (isMemberMode() && currentUser.member) ? (currentUser.member.permMode || 'cskh') : 'admin';
     const shopIds = Array.from(runningIds);
     await window.api.cloudReportActive({ userKey, userName, role, shopIds });
-  } catch {}
+  } catch (err) {
+    console.warn('reportMyActiveShops error:', err);
+  } finally {
+    isReportingActive = false;
+  }
 }
 
+let isRefreshingActive = false;
 async function refreshOnlineActiveShops() {
+  if (isRefreshingActive) return;
+  isRefreshingActive = true;
   try {
     const res = await window.api.cloudGetActive();
     if (res && typeof res === 'object') {
       if (res.shops || res.users) {
         onlineActiveShops = res.shops || {};
         onlineActiveUsers = res.users || {};
-      } else {
+      } else if (!res.error) {
         onlineActiveShops = res;
       }
       if (currentUser) {
@@ -117,7 +126,9 @@ async function refreshOnlineActiveShops() {
         renderDeptMonitor();
       }
     }
-  } catch {}
+  } catch {} finally {
+    isRefreshingActive = false;
+  }
 }
 
 function updateCardsRunningStatus() {
@@ -2131,13 +2142,13 @@ $('pickBrowserBtn').onclick = async () => {
   // Kiem tra ban cap nhat moi (Live OTA) ngay khi mo app va moi 60 giay
   setTimeout(() => checkAndUpdateOta(true), 1500);
   setInterval(() => checkAndUpdateOta(true), 60000);
-  // Tu dong dong bo du lieu Online ngam moi 12 giay giua may Admin va may Nhan vien
+  // Tu dong dong bo du lieu Online ngam moi 15 giay giua may Admin va may Nhan vien
   setInterval(() => {
     syncFromCloud(false, true);
-  }, 12000);
-  // Dong bo trang thai mo/dong gian hang Online moi 6 giay
-  setInterval(refreshOnlineActiveShops, 6000);
-  // Heartbeat dinh ky moi 12 giay de luon duy tri trang thai Online & dong bo gian hang dang mo len Cloud
+  }, 15000);
+  // Dong bo trang thai mo/dong gian hang Online moi 4 giay (muot ma, tuc thi)
+  setInterval(refreshOnlineActiveShops, 4000);
+  // Heartbeat dinh ky moi 7 giay de lien tuc lam moi trang thai Online & dong bo gian hang dang mo len Cloud
   setInterval(async () => {
     if (!currentUser) return;
     try {
@@ -2147,7 +2158,7 @@ $('pickBrowserBtn').onclick = async () => {
       }
       await reportMyActiveShops();
     } catch {}
-  }, 12000);
+  }, 7000);
 })();
 
 window.addEventListener('beforeunload', () => {
