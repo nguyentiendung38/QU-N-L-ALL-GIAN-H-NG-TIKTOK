@@ -2258,7 +2258,8 @@ function renderMemberShopsChecklist(assignedShopIds = []) {
 
     const txt = document.createElement('span');
     txt.style.flex = '1';
-    txt.textContent = s.name + (s.group ? ` [${s.group}]` : '');
+    const platformLabel = s.platform === 'shopee' ? '🛒 Shopee' : '🎵 TikTok';
+    txt.textContent = `${platformLabel} • ${s.name}${s.group ? ` [${s.group}]` : ''}`;
 
     lbl.append(chk, dot, txt);
     box.appendChild(lbl);
@@ -2410,7 +2411,9 @@ function renderMembersListModal() {
 
     const sub = document.createElement('div');
     sub.className = 'member-sub';
-    sub.textContent = `Đang được phân công: ${mShops.length} gian hàng` +
+    const shopeeCount = mShops.filter((shop) => shop.platform === 'shopee').length;
+    const tiktokCount = mShops.length - shopeeCount;
+    sub.textContent = `Đang được phân công: ${mShops.length} shop (🎵 TikTok ${tiktokCount} • 🛒 Shopee ${shopeeCount})` +
       (m.phone ? ` • 📞 ${m.phone}` : '') +
       (m.gmvExtensionEnabled === true ? ' • 🧩 GMV Max: Đã bật' : ' • 🧩 GMV Max: Đã tắt');
 
@@ -2424,7 +2427,7 @@ function renderMembersListModal() {
       mShops.forEach((s) => {
         const tag = document.createElement('span');
         tag.className = 'member-shop-tag';
-        tag.textContent = '🏪 ' + s.name;
+        tag.textContent = `${s.platform === 'shopee' ? '🛒 Shopee' : '🎵 TikTok'} • ${s.name}`;
         tagsWrap.appendChild(tag);
       });
       card.appendChild(tagsWrap);
