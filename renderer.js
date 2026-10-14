@@ -322,7 +322,7 @@ function renderDeptMonitor() {
         })
         .filter(Boolean);
 
-      const assignedCount = (Array.isArray(m.shopIds) ? m.shopIds.length : 0);
+      const assignedCount = getMemberShops(m.id).length;
 
       return {
         member: m,
@@ -395,7 +395,7 @@ function renderDeptMonitor() {
 
         let shopsSub = '';
         if (item.isRunning) {
-          shopsSub = `🟢 Đang mở ${item.runningNames.length} gian: <b>${item.runningNames.join(', ')}</b>`;
+          shopsSub = `🟢 Đang mở ${item.runningNames.length} shop: <b>${item.runningNames.join(', ')}</b>`;
         } else {
           shopsSub = `⚪ Đã đóng Chrome (Được giao ${item.assignedCount} gian)`;
         }

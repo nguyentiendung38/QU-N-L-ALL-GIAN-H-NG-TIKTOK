@@ -1,8 +1,8 @@
 {
-  "version": "2.1.17",
-  "buildNumber": 226,
+  "version": "2.1.18",
+  "buildNumber": 227,
   "updatedAt": "2026-10-14",
-  "notes": "Fix nhan dien tien trinh Chrome bang lockfile tren Windows va chong bo sot luot bao cao",
+  "notes": "Fix bugs and improve performance.",
   "files": [
     "index.html",
     "renderer.js",
