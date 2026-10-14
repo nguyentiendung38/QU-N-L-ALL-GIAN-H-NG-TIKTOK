@@ -27,6 +27,7 @@ let activitySyncError = '';
 let isLoadingActivity = false;
 let activityWriteQueue = Promise.resolve();
 let activityFlushPromise = null;
+let lastActivitySyncWarningAt = 0;
 let activeCloudError = '';
 let activeStatusFetchError = '';
 let isDeptMonitorCollapsed = (function () {
@@ -180,7 +181,7 @@ async function reportMyActiveShops() {
       userName,
       role,
       shopIds,
-      latestActivity: shopActivityLog.find((event) => event.synced) || null,
+      latestActivity: shopActivityLog[0] || null,
       proxyIssues: getVisibleShopsForRole()
         .filter((shop) => proxyStatusMap.get(shop.id)?.state === 'die')
         .map((shop) => shop.id),
@@ -232,20 +233,23 @@ async function refreshOnlineActiveShops() {
         activeCloudOk = false;
         activeStatusFetchError = res.error;
         console.warn('Không tải được trạng thái shop từ Cloud:', res.error);
+        if (res.users) onlineActiveUsers = res.users;
       } else if (res.shops || res.users) {
         activeCloudOk = true;
         activeStatusFetchError = '';
         onlineActiveUsers = res.users || {};
-        const knownEventIds = new Set(sharedActivityLog.map((event) => event.id));
-        Object.values(onlineActiveUsers).forEach((user) => {
-          const event = user && user.latestActivity;
-          if (event && event.id && !knownEventIds.has(event.id)) {
-            sharedActivityLog.push(event);
-            knownEventIds.add(event.id);
-          }
-        });
-        sharedActivityLog = sharedActivityLog.slice(-100);
       }
+      const knownEventIds = new Set(sharedActivityLog.map((event) => event.id));
+      Object.values(onlineActiveUsers).forEach((user) => {
+        const event = user && user.latestActivity;
+        if (event && event.id && !knownEventIds.has(event.id)) {
+          sharedActivityLog.push(event);
+          knownEventIds.add(event.id);
+        }
+      });
+      sharedActivityLog = sharedActivityLog
+        .sort((a, b) => Number(b.time) - Number(a.time))
+        .slice(0, 100);
       if (currentUser) {
         updateCardsRunningStatus();
         renderDeptMonitor();
@@ -311,6 +315,11 @@ async function flushPendingActivity() {
         const result = await write;
         if (!result || !result.ok) {
           activitySyncError = (result && result.error) || 'Không đồng bộ được lịch sử hoạt động lên Cloud';
+          const now = Date.now();
+          if (now - lastActivitySyncWarningAt >= 30000) {
+            console.warn('Không đồng bộ được hoạt động lên Cloud:', activitySyncError);
+            lastActivitySyncWarningAt = now;
+          }
           break;
         }
         event.synced = true;
@@ -362,7 +371,17 @@ async function refreshActivityHistory(force = false) {
     if (!result || !result.ok) {
       activitySyncError = (result && result.error) || 'Không tải được lịch sử hoạt động từ Cloud';
     } else {
-      sharedActivityLog = Array.isArray(result.events) ? result.events : [];
+      const mergedEvents = [
+        ...(Array.isArray(result.events) ? result.events : []),
+        ...sharedActivityLog
+      ];
+      const uniqueEvents = new Map();
+      mergedEvents.forEach((event) => {
+        if (event && event.id && !uniqueEvents.has(event.id)) uniqueEvents.set(event.id, event);
+      });
+      sharedActivityLog = Array.from(uniqueEvents.values())
+        .sort((a, b) => Number(b.time) - Number(a.time))
+        .slice(0, 100);
       activitySyncError = '';
     }
   } catch (err) {
@@ -709,6 +728,7 @@ function renderAdminDashboard() {
 
   const alerts = [];
   if (activeStatusFetchError) alerts.push(`Không tải được trạng thái nhân viên: ${activeStatusFetchError}`);
+  if (activitySyncError) alerts.push(`Không đồng bộ được hoạt động gần đây: ${activitySyncError}`);
   failedProxyShops.forEach((shop) => {
     const error = proxyStatusMap.get(shop.id)?.error || 'Proxy không kết nối được';
     alerts.push(`Proxy lỗi — ${shop.name}: ${error}`);
@@ -727,7 +747,7 @@ function renderAdminDashboard() {
     alerts.push(`${uncheckedProxyCount} Proxy chưa được kiểm tra trên máy này.`);
   }
 
-  const cloudStatus = activeCloudError || activeStatusFetchError
+  const cloudStatus = activeCloudError || activeStatusFetchError || activitySyncError
     ? '<span class="dashboard-status error">⚠ Cần kiểm tra đồng bộ</span>'
     : activeCloudOk
       ? '<span class="dashboard-status ok">☁ Đang hoạt động</span>'
@@ -1061,7 +1081,10 @@ async function doLogin(silent = false) {
     const loginStatusReport = reportMyActiveShops();
     await flushPendingActivity();
     toast('👑 Đã đăng nhập quyền Quản trị viên (Admin)!');
-    await loginStatusReport;
+    const statusResult = await loginStatusReport;
+    if (!statusResult.ok && !statusResult.queued) {
+      toast('⚠️ Chưa gửi được trạng thái đăng nhập lên máy Admin: ' + (statusResult.error || 'Kiểm tra kết nối Cloud.'));
+    }
     refreshOnlineActiveShops();
     refreshActivityHistory(true);
     syncFromCloud(false, true);
@@ -1087,7 +1110,10 @@ async function doLogin(silent = false) {
     await flushPendingActivity();
     const assignedCount = getMemberShops(foundMember.id).length;
     toast(`👤 Xin chào ${foundMember.name}! Bạn đang quản lý ${assignedCount} gian hàng.`);
-    await loginStatusReport;
+    const statusResult = await loginStatusReport;
+    if (!statusResult.ok && !statusResult.queued) {
+      toast('⚠️ Chưa gửi được trạng thái đăng nhập lên máy Admin: ' + (statusResult.error || 'Kiểm tra kết nối Cloud.'));
+    }
     refreshOnlineActiveShops();
     syncFromCloud(false, true);
     return true;
@@ -2054,7 +2080,13 @@ $('closeAllBtn').onclick = async () => {
   if (!roleRunning.length) return;
   if (!confirm(`Đóng tất cả ${roleRunning.length} cửa sổ Chrome đang mở của tài khoản này?`)) return;
   if (isMemberMode()) {
-    const results = await Promise.all(roleRunning.map((s) => window.api.closeShop(s.id)));
+    roleRunning.forEach((shop) => closingShopIds.add(shop.id));
+    let results;
+    try {
+      results = await Promise.all(roleRunning.map((s) => window.api.closeShop(s.id)));
+    } finally {
+      roleRunning.forEach((shop) => closingShopIds.delete(shop.id));
+    }
     const closedIds = roleRunning
       .filter((_shop, index) => results[index] && results[index].ok)
       .map((shop) => shop.id);
@@ -2780,7 +2812,15 @@ $('pickBrowserBtn').onclick = async () => {
   const active = await window.api.getRunningShops();
   runningIds = new Set(active || []);
   window.api.onRunningChanged(async (ids) => {
-    runningIds = new Set(ids || []);
+    const nextRunningIds = new Set(ids || []);
+    if (isMemberMode()) {
+      runningIds.forEach((shopId) => {
+        if (nextRunningIds.has(shopId) || closingShopIds.has(shopId)) return;
+        const shop = shops.find((item) => item.id === shopId);
+        recordShopActivity('close', shop || { id: shopId, name: shopId });
+      });
+    }
+    runningIds = nextRunningIds;
     if (currentUser) {
       render();
       await reportMyActiveShops();
@@ -2834,7 +2874,9 @@ $('pickBrowserBtn').onclick = async () => {
       }
       await reportMyActiveShops();
       await flushPendingActivity();
-    } catch {}
+    } catch (err) {
+      console.warn('Không gửi được heartbeat nhân viên lên Cloud:', err);
+    }
   }, 7000);
   setInterval(() => {
     if (currentUser && !isMemberMode()) refreshActivityHistory();

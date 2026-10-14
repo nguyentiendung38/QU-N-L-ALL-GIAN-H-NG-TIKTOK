@@ -760,6 +760,7 @@ ipcMain.handle('cloud:getActive', async () => {
     const members = readMembers();
     const keysToCheck = ['admin', ...members.map((m) => String(m.id).trim().replace(/[^a-zA-Z0-9_-]/g, '_'))];
     const uniqueKeys = Array.from(new Set(keysToCheck));
+    let activeReadError = '';
 
     // Tai song song trang thai cua tat ca nhan vien
     await Promise.all(
@@ -795,8 +796,11 @@ ipcMain.handle('cloud:getActive', async () => {
               cloudActiveCache.delete(k);
               return;
             }
+          } else if (res.status !== 404) {
+            activeReadError = activeReadError || res.error || `Cloud trả về HTTP ${res.status} khi đọc trạng thái ${k}`;
           }
         } catch (e) {
+          activeReadError = activeReadError || e.message;
           const now = Date.now();
           if (now - lastActiveFetchWarningAt >= 60000) {
             console.warn('Không đọc được trạng thái nhân viên từ Cloud:', e.message);
@@ -859,7 +863,8 @@ ipcMain.handle('cloud:getActive', async () => {
     }
     return {
       shops: activeMap,
-      users: usersMap
+      users: usersMap,
+      ...(activeReadError ? { error: activeReadError } : {})
     };
   } catch (e) {
     return { shops: {}, users: {}, error: e.message };
@@ -2256,11 +2261,15 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl, allowGmvExtension
           if (process.platform === 'win32') {
             const result = await findProfileProcessIds(dir, true);
             if (result.error) {
-              console.warn(`Không xác minh được Chrome của shop ${id}:`, result.error);
+              if (attempt === 0) {
+                console.warn(`Không xác minh được Chrome của shop ${id}:`, result.error);
+              }
               if (attempt < 2) {
                 setTimeout(() => reconcileExitedLaunch(attempt + 1), 1200);
                 return;
               }
+              setTimeout(() => reconcileExitedLaunch(), 5000);
+              return;
             } else if (result.pids.length) {
               const profilePid = result.pids.find((pid) => isProcessAlive(pid));
               if (!profilePid) {
