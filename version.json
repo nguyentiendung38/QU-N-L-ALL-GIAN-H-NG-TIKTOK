@@ -1,8 +1,8 @@
 {
-  "version": "2.1.46",
-  "buildNumber": 255,
+  "version": "2.1.47",
+  "buildNumber": 256,
   "updatedAt": "2026-10-14",
-  "notes": "fix update1 npm run release -- Nội dung cập nhật",
+  "notes": "Khắc phục HTTP 400 Cloud khi đồng bộ trạng thái shop và hoạt động",
   "files": [
     "main.js",
     "main-core.js",

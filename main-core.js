@@ -698,6 +698,31 @@ function normalizeActiveActivity(event, userKey, userName) {
   };
 }
 
+function decodeCloudString(body) {
+  let value = String(body || '').trim();
+  if (value.startsWith('"') && value.endsWith('"')) {
+    try {
+      value = JSON.parse(value);
+    } catch {}
+  }
+  return value;
+}
+
+function activeStatusUrl(cloudKey, userKey, payload) {
+  const value = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  return `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${encodeURIComponent(cloudKey)}/act_${encodeURIComponent(userKey)}/${value}`;
+}
+
+function activeShopsUrl(cloudKey, userKey, chunkIndex, value) {
+  return `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${encodeURIComponent(cloudKey)}/actshops_${encodeURIComponent(userKey)}_${chunkIndex}/${value}`;
+}
+
+function cloudResponseError(response, action) {
+  if (response.error) return response.error;
+  const detail = decodeCloudString(response.body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return `${action} (HTTP ${response.status})${detail ? `: ${detail.slice(0, 240)}` : ''}`;
+}
+
 // Dong bo trang thai dang mo / dang dong cua cac gian hang qua Cloud giua may Admin va Nhan vien
 ipcMain.handle('cloud:reportActive', async (_e, data) => {
   try {
@@ -705,26 +730,17 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
     const cloudKey = (s.cloudKey || DEFAULT_CLOUD_KEY).trim();
     const rawKey = (data && data.userKey ? String(data.userKey).trim() : 'admin');
     const userKey = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const who = (data && data.userName ? String(data.userName).trim() : 'Admin');
-    const role = (data && data.role ? String(data.role).trim() : 'cskh');
-    const shops = (data && Array.isArray(data.shopIds)) ? data.shopIds : [];
+    const who = (data && data.userName ? String(data.userName).trim() : 'Admin').slice(0, 40);
+    const role = (data && data.role ? String(data.role).trim() : 'cskh').slice(0, 20);
+    const shops = (data && Array.isArray(data.shopIds))
+      ? Array.from(new Set(data.shopIds.map((id) => String(id).trim().slice(0, 80)).filter(Boolean)))
+      : [];
     const proxyIssues = data && Array.isArray(data.proxyIssues)
       ? data.proxyIssues.map((id) => String(id).slice(0, 100)).slice(0, 100)
       : [];
     const activityPending = Math.max(0, Math.min(100, parseInt(data && data.activityPending, 10) || 0));
     const latestActivity = normalizeActiveActivity(data && data.latestActivity, rawKey, who);
     const now = Date.now();
-    const payload = {
-      who,
-      role,
-      userKey: rawKey,
-      time: now,
-      shops,
-      proxyIssues,
-      activityPending,
-      latestActivity
-    };
-
     // Cap nhat cache cuc bo ngay lap tuc de may nay thay trang thai ngay
     cloudActiveCache.set(userKey, {
       who,
@@ -737,8 +753,47 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
       lastFetched: now
     });
 
-    const b64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-    const url = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${encodeURIComponent(cloudKey)}/act_${encodeURIComponent(userKey)}/${b64}`;
+    const encodedShops = zlib.deflateRawSync(Buffer.from(JSON.stringify(shops), 'utf8')).toString('base64url');
+    const shopChunks = encodedShops.match(/.{1,100}/g) || [];
+    const basePayload = { who, role, time: now, shops: [], proxyIssues, activityPending };
+    const candidatePayload = { ...basePayload, latestActivity };
+    const inlinePayload = shops.length ? { ...candidatePayload, shops } : candidatePayload;
+    const inlineUrl = activeStatusUrl(cloudKey, userKey, inlinePayload);
+    const statusPayload = inlineUrl.length <= 240
+      ? inlinePayload
+      : { ...basePayload, shopChunks: shopChunks.length };
+    let url = activeStatusUrl(cloudKey, userKey, statusPayload);
+
+    if (url.length > 240 && statusPayload.latestActivity) {
+      delete statusPayload.latestActivity;
+      url = activeStatusUrl(cloudKey, userKey, statusPayload);
+    }
+    if (url.length > 240 && statusPayload.proxyIssues) {
+      delete statusPayload.proxyIssues;
+      delete statusPayload.activityPending;
+      url = activeStatusUrl(cloudKey, userKey, statusPayload);
+    }
+    if (url.length > 240) {
+      return { ok: false, error: 'Dữ liệu trạng thái vượt giới hạn URL Cloud; không thể gửi trạng thái shop.' };
+    }
+
+    if (statusPayload.shopChunks) {
+      for (let index = 0; index < shopChunks.length; index++) {
+        const chunkResult = await httpsReq(
+          activeShopsUrl(cloudKey, userKey, index, shopChunks[index]),
+          'POST',
+          ''
+        );
+        if (chunkResult.status !== 200) {
+          return {
+            ok: false,
+            error: cloudResponseError(chunkResult, `Không lưu được danh sách shop (phần ${index + 1}/${shopChunks.length})`),
+            status: chunkResult.status
+          };
+        }
+      }
+    }
+
     let r;
     for (let attempt = 0; attempt < 3; attempt++) {
       r = await httpsReq(url, 'POST', '');
@@ -747,7 +802,7 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
         await new Promise((res) => setTimeout(res, 300 * (attempt + 1)));
       }
     }
-    return { ok: false, error: r.error || `Cloud trả về HTTP ${r.status}`, status: r.status };
+    return { ok: false, error: cloudResponseError(r, 'Không lưu được trạng thái nhân viên lên Cloud'), status: r.status };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -773,18 +828,34 @@ ipcMain.handle('cloud:getActive', async () => {
               try { raw = JSON.parse(raw); } catch {}
             }
             if (raw && raw !== 'OFF' && raw.length > 5) {
-              let parsed;
-              try {
-                parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
-              } catch {
-                parsed = JSON.parse(raw);
-              }
+              const parsed = parseCloudJsonValue(raw);
               if (parsed && typeof parsed === 'object') {
+                let activeShops = Array.isArray(parsed.shops) ? parsed.shops : [];
+                const chunkCount = Math.max(0, Math.min(1000, parseInt(parsed.shopChunks, 10) || 0));
+                if (chunkCount) {
+                  const chunks = [];
+                  for (let index = 0; index < chunkCount; index++) {
+                    const chunkResponse = await httpsReq(
+                      `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/actshops_${encodeURIComponent(k)}_${index}`,
+                      'GET'
+                    );
+                    if (chunkResponse.status !== 200) {
+                      throw new Error(cloudResponseError(chunkResponse, `Không đọc được danh sách shop của ${k}`));
+                    }
+                    chunks.push(decodeCloudString(chunkResponse.body));
+                  }
+                  activeShops = JSON.parse(
+                    zlib.inflateRawSync(Buffer.from(chunks.join(''), 'base64url')).toString('utf8')
+                  );
+                  if (!Array.isArray(activeShops)) {
+                    throw new Error(`Danh sách shop của ${k} trên Cloud không hợp lệ`);
+                  }
+                }
                 cloudActiveCache.set(k, {
                   who: parsed.who || 'Nhân viên',
                   role: parsed.role || 'cskh',
                   time: Number(parsed.time) || 0,
-                  shops: Array.isArray(parsed.shops) ? parsed.shops : [],
+                  shops: activeShops,
                   proxyIssues: Array.isArray(parsed.proxyIssues) ? parsed.proxyIssues : [],
                   activityPending: Math.max(0, Math.min(100, parseInt(parsed.activityPending, 10) || 0)),
                   latestActivity: normalizeActiveActivity(parsed.latestActivity, parsed.userKey || k, parsed.who || 'Nhân viên'),
@@ -872,15 +943,15 @@ ipcMain.handle('cloud:getActive', async () => {
 });
 
 function parseCloudJsonValue(body) {
-  let raw = String(body || '').trim();
+  let raw = decodeCloudString(body);
   if (!raw) return null;
-  if (raw.startsWith('"') && raw.endsWith('"')) {
-    try { raw = JSON.parse(raw); } catch {}
-  }
   if (!raw || raw === 'OFF') return null;
   try {
     return JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
   } catch {
+    try {
+      return JSON.parse(zlib.inflateRawSync(Buffer.from(raw, 'base64url')).toString('utf8'));
+    } catch {}
     try {
       return JSON.parse(raw);
     } catch {
@@ -889,16 +960,26 @@ function parseCloudJsonValue(body) {
   }
 }
 
-function activityCloudUrl(cloudKey, key, value) {
+function activityCloudUrl(cloudKey, key, value, compressed = false) {
   const baseUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${encodeURIComponent(cloudKey)}/${encodeURIComponent(key)}`;
-  return value === undefined ? baseUrl : `${baseUrl}/${Buffer.from(JSON.stringify(value), 'utf8').toString('base64url')}`;
+  if (value === undefined) return baseUrl;
+  const json = Buffer.from(JSON.stringify(value), 'utf8');
+  const encoded = compressed
+    ? zlib.deflateRawSync(json, { level: 9 }).toString('base64url')
+    : json.toString('base64url');
+  return `${baseUrl}/${encoded}`;
 }
 
 async function saveCloudActivityEvent(cloudKey, userKey, event) {
   const eventKey = `event_${userKey}_${event.id}`;
-  const saved = await httpsReq(activityCloudUrl(cloudKey, eventKey, event), 'POST', '');
+  const compactEvent = {
+    action: event.action,
+    shopId: String(event.shopId || '').slice(0, 80),
+    time: Number(event.time) || Date.now()
+  };
+  const saved = await httpsReq(activityCloudUrl(cloudKey, eventKey, compactEvent, true), 'POST', '');
   if (saved.status !== 200) {
-    return { ok: false, error: saved.error || `Không lưu sự kiện Cloud (HTTP ${saved.status})` };
+    return { ok: false, error: cloudResponseError(saved, 'Không lưu được sự kiện hoạt động lên Cloud') };
   }
   return { ok: true };
 }
@@ -942,7 +1023,7 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
     };
 
     let eventIds = Array.isArray(stored && stored.ids)
-      ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-15)
+      ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-7)
       : [];
     if (!eventIds.length && Array.isArray(stored && stored.events)) {
       const legacyEvents = stored.events
@@ -962,10 +1043,18 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
 
     const savedEvent = await saveCloudActivityEvent(cloudKey, userKey, nextEvent);
     if (!savedEvent.ok) return savedEvent;
-    eventIds = [...eventIds.filter((id) => id !== eventId), eventId].slice(-15);
-    const savedIndex = await httpsReq(activityCloudUrl(cloudKey, valueKey, { ids: eventIds }), 'POST', '');
+    eventIds = [...eventIds.filter((id) => id !== eventId), eventId].slice(-8);
+    let indexUrl = activityCloudUrl(cloudKey, valueKey, { ids: eventIds }, true);
+    while (indexUrl.length > 240 && eventIds.length > 1) {
+      eventIds.shift();
+      indexUrl = activityCloudUrl(cloudKey, valueKey, { ids: eventIds }, true);
+    }
+    if (indexUrl.length > 240) {
+      return { ok: false, error: 'Danh sách hoạt động vượt giới hạn URL Cloud.' };
+    }
+    const savedIndex = await httpsReq(indexUrl, 'POST', '');
     if (savedIndex.status !== 200) {
-      return { ok: false, error: savedIndex.error || `Không lưu danh sách lịch sử Cloud (HTTP ${savedIndex.status})` };
+      return { ok: false, error: cloudResponseError(savedIndex, 'Không lưu được danh sách lịch sử Cloud') };
     }
     return { ok: true, event: nextEvent };
   } catch (e) {
@@ -982,6 +1071,10 @@ ipcMain.handle('cloud:getActivity', async () => {
       'admin',
       ...members.map((member) => String(member.id).trim().replace(/[^a-zA-Z0-9_-]/g, '_'))
     ]));
+    const memberNames = new Map(
+      members.map((member) => [String(member.id).trim().replace(/[^a-zA-Z0-9_-]/g, '_'), member.name])
+    );
+    const shopNames = new Map(readShops().map((shop) => [shop.id, shop.name]));
     const results = await Promise.all(userKeys.map(async (userKey) => {
       const url = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/history_${encodeURIComponent(userKey)}`;
       const response = await httpsReq(url, 'GET');
@@ -996,7 +1089,7 @@ ipcMain.handle('cloud:getActivity', async () => {
         return { events: stored.events, error: null };
       }
       const eventIds = Array.isArray(stored && stored.ids)
-        ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-15)
+        ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-7)
         : [];
       const eventResults = await Promise.all(eventIds.map(async (eventId) => {
         const eventKey = `event_${userKey}_${eventId}`;
@@ -1009,7 +1102,18 @@ ipcMain.handle('cloud:getActivity', async () => {
           return { event: null, error: eventResponse.error || `HTTP ${eventResponse.status}` };
         }
         const parsed = parseCloudJsonValue(eventResponse.body);
-        return { event: parsed && typeof parsed === 'object' ? parsed : null, error: null };
+        return {
+          event: parsed && typeof parsed === 'object'
+            ? {
+                ...parsed,
+                id: parsed.id || eventId,
+                userKey: parsed.userKey || userKey,
+                userName: parsed.userName || memberNames.get(userKey) || (userKey === 'admin' ? readAuthObj().adminUser : 'Nhân viên'),
+                shopName: parsed.shopName || shopNames.get(parsed.shopId) || ''
+              }
+            : null,
+          error: null
+        };
       }));
       const eventError = eventResults.find((result) => result.error);
       return {
