@@ -795,6 +795,20 @@ function parseCloudJsonValue(body) {
   }
 }
 
+function activityCloudUrl(cloudKey, key, value) {
+  const baseUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${encodeURIComponent(cloudKey)}/${encodeURIComponent(key)}`;
+  return value === undefined ? baseUrl : `${baseUrl}/${Buffer.from(JSON.stringify(value), 'utf8').toString('base64url')}`;
+}
+
+async function saveCloudActivityEvent(cloudKey, userKey, event) {
+  const eventKey = `event_${userKey}_${event.id}`;
+  const saved = await httpsReq(activityCloudUrl(cloudKey, eventKey, event), 'POST', '');
+  if (saved.status !== 200) {
+    return { ok: false, error: saved.error || `Không lưu sự kiện Cloud (HTTP ${saved.status})` };
+  }
+  return { ok: true };
+}
+
 ipcMain.handle('cloud:appendActivity', async (_e, event) => {
   try {
     if (!event || !['open', 'close'].includes(event.action)) {
@@ -819,7 +833,9 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
 
     const stored = current.status === 200 ? parseCloudJsonValue(current.body) : null;
     const events = Array.isArray(stored && stored.events) ? stored.events : [];
-    const eventId = String(event.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`).slice(0, 50);
+    const eventId = String(event.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 50);
     const nextEvent = {
       id: eventId,
       action: event.action,
@@ -827,17 +843,34 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
       userName: String(event.userName || 'Nhân viên').trim().slice(0, 40),
       shopId,
       shopName,
-      time: Date.now()
+      time: Number(event.time) || Date.now()
     };
-    const existingIndex = events.findIndex((item) => item && item.id === eventId);
-    if (existingIndex >= 0) events.splice(existingIndex, 1);
-    events.push(nextEvent);
-    const boundedEvents = events.slice(-15);
-    const encoded = Buffer.from(JSON.stringify({ events: boundedEvents }), 'utf8').toString('base64url');
-    const putUrl = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${encodeURIComponent(cloudKey)}/${encodeURIComponent(valueKey)}/${encoded}`;
-    const saved = await httpsReq(putUrl, 'POST', '');
-    if (saved.status !== 200) {
-      return { ok: false, error: saved.error || `Không lưu được lịch sử Cloud (HTTP ${saved.status})` };
+
+    let eventIds = Array.isArray(stored && stored.ids)
+      ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-15)
+      : [];
+    if (!eventIds.length && Array.isArray(stored && stored.events)) {
+      const legacyEvents = stored.events
+        .filter((item) => item && item.id && ['open', 'close'].includes(item.action))
+        .slice(-14);
+      for (const oldEvent of legacyEvents) {
+        const safeEvent = {
+          ...oldEvent,
+          id: String(oldEvent.id).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50),
+          userKey
+        };
+        const migrated = await saveCloudActivityEvent(cloudKey, userKey, safeEvent);
+        if (!migrated.ok) return migrated;
+        eventIds.push(safeEvent.id);
+      }
+    }
+
+    const savedEvent = await saveCloudActivityEvent(cloudKey, userKey, nextEvent);
+    if (!savedEvent.ok) return savedEvent;
+    eventIds = [...eventIds.filter((id) => id !== eventId), eventId].slice(-15);
+    const savedIndex = await httpsReq(activityCloudUrl(cloudKey, valueKey, { ids: eventIds }), 'POST', '');
+    if (savedIndex.status !== 200) {
+      return { ok: false, error: savedIndex.error || `Không lưu danh sách lịch sử Cloud (HTTP ${savedIndex.status})` };
     }
     return { ok: true, event: nextEvent };
   } catch (e) {
@@ -864,9 +897,29 @@ ipcMain.handle('cloud:getActivity', async () => {
         return { events: [], error: response.error || `HTTP ${response.status}` };
       }
       const stored = parseCloudJsonValue(response.body);
+      if (Array.isArray(stored && stored.events)) {
+        return { events: stored.events, error: null };
+      }
+      const eventIds = Array.isArray(stored && stored.ids)
+        ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-15)
+        : [];
+      const eventResults = await Promise.all(eventIds.map(async (eventId) => {
+        const eventKey = `event_${userKey}_${eventId}`;
+        const eventUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/${encodeURIComponent(eventKey)}`;
+        const eventResponse = await httpsReq(eventUrl, 'GET');
+        if (eventResponse.status === 404 || (eventResponse.status === 200 && !eventResponse.body.trim())) {
+          return { event: null, error: null };
+        }
+        if (eventResponse.status !== 200) {
+          return { event: null, error: eventResponse.error || `HTTP ${eventResponse.status}` };
+        }
+        const parsed = parseCloudJsonValue(eventResponse.body);
+        return { event: parsed && typeof parsed === 'object' ? parsed : null, error: null };
+      }));
+      const eventError = eventResults.find((result) => result.error);
       return {
-        events: Array.isArray(stored && stored.events) ? stored.events : [],
-        error: null
+        events: eventResults.map((result) => result.event).filter(Boolean),
+        error: eventError ? eventError.error : null
       };
     }));
     const events = results

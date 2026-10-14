@@ -1,8 +1,8 @@
 {
-  "version": "2.1.27",
-  "buildNumber": 236,
+  "version": "2.1.28",
+  "buildNumber": 237,
   "updatedAt": "2026-10-14",
-  "notes": "Thêm dashboard, lịch sử hoạt động và cảnh báo quản lý",
+  "notes": "Sửa lỗi HTTP 400 khi lưu lịch sử hoạt động",
   "files": [
     "main.js",
     "main-core.js",

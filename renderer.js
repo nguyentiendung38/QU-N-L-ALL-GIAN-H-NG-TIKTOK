@@ -677,6 +677,10 @@ function renderAdminDashboard() {
   if (activeCloudError) alerts.push(`Không gửi được trạng thái lên Cloud: ${activeCloudError}`);
   if (activeStatusFetchError) alerts.push(`Không tải được trạng thái nhân viên: ${activeStatusFetchError}`);
   if (activitySyncError) alerts.push(`Lịch sử hoạt động chưa đồng bộ: ${activitySyncError}`);
+  const localPendingCount = shopActivityLog.filter((event) => !event.synced).length;
+  if (localPendingCount > 0) {
+    alerts.push(`Máy Admin còn ${localPendingCount} hoạt động đang chờ đồng bộ.`);
+  }
   staff.forEach((user) => {
     const pending = Math.max(0, Number(user && user.activityPending) || 0);
     if (pending > 0) alerts.push(`${user.who || 'Nhân viên'} còn ${pending} hoạt động chưa đồng bộ.`);
@@ -699,7 +703,7 @@ function renderAdminDashboard() {
     alerts.push(`${uncheckedProxyCount} Proxy chưa được kiểm tra trên máy này.`);
   }
 
-  const cloudStatus = activeCloudError || activeStatusFetchError || activitySyncError
+  const cloudStatus = activeCloudError || activeStatusFetchError || activitySyncError || localPendingCount > 0
     ? '<span class="dashboard-status error">⚠ Cần kiểm tra đồng bộ</span>'
     : activeCloudOk
       ? '<span class="dashboard-status ok">☁ Đang hoạt động</span>'
