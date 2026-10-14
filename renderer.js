@@ -93,22 +93,33 @@ function getMyUserName() {
 
 let isReportingActive = false;
 let needReportAgain = false;
+let lastActiveReportWarningAt = 0;
 async function reportMyActiveShops() {
-  if (!currentUser) return;
+  if (!currentUser) return { ok: false, error: 'Chưa đăng nhập' };
   if (isReportingActive) {
     needReportAgain = true;
-    return;
+    return { ok: false, queued: true };
   }
   isReportingActive = true;
   needReportAgain = false;
+  let result = { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
   try {
     const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
     const userName = currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName();
     const role = (isMemberMode() && currentUser.member) ? (currentUser.member.permMode || 'cskh') : 'admin';
     const shopIds = Array.from(runningIds);
-    await window.api.cloudReportActive({ userKey, userName, role, shopIds });
+    result = await window.api.cloudReportActive({ userKey, userName, role, shopIds });
+    if (!result || !result.ok) {
+      const now = Date.now();
+      if (now - lastActiveReportWarningAt >= 30000) {
+        console.warn('Không đồng bộ được trạng thái shop lên Cloud:', (result && result.error) || 'Lỗi không xác định');
+        lastActiveReportWarningAt = now;
+      }
+      result = result || { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
+    }
   } catch (err) {
     console.warn('reportMyActiveShops error:', err);
+    result = { ok: false, error: err.message };
   } finally {
     isReportingActive = false;
     if (needReportAgain) {
@@ -116,6 +127,7 @@ async function reportMyActiveShops() {
       setTimeout(reportMyActiveShops, 200);
     }
   }
+  return result;
 }
 
 let isRefreshingActive = false;
@@ -125,7 +137,9 @@ async function refreshOnlineActiveShops() {
   try {
     const res = await window.api.cloudGetActive();
     if (res && typeof res === 'object') {
-      if (res.shops || res.users) {
+      if (res.error) {
+        console.warn('Không tải được trạng thái shop từ Cloud:', res.error);
+      } else if (res.shops || res.users) {
         onlineActiveShops = res.shops || {};
         onlineActiveUsers = res.users || {};
       } else if (!res.error) {
@@ -136,7 +150,9 @@ async function refreshOnlineActiveShops() {
         renderDeptMonitor();
       }
     }
-  } catch {} finally {
+  } catch (err) {
+    console.warn('refreshOnlineActiveShops error:', err);
+  } finally {
     isRefreshingActive = false;
   }
 }
@@ -1359,12 +1375,16 @@ async function openShop(s, which) {
   if (r && r.ok) {
     runningIds.add(s.id);
     updateCardsRunningStatus();
-    reportMyActiveShops();
-    if (r.alreadyOpen) {
-      toast('Cửa sổ ' + s.name + ' đang mở (đã đưa lên trước)');
-    } else {
-      toast('Đang mở ' + s.name + '…');
-    }
+    const reportPromise = reportMyActiveShops();
+    const openedMessage = r.alreadyOpen
+      ? 'Cửa sổ ' + s.name + ' đang mở (đã đưa lên trước)'
+      : 'Đang mở ' + s.name + '…';
+    toast(openedMessage);
+    reportPromise.then((reportResult) => {
+      if (reportResult && !reportResult.ok && !reportResult.queued) {
+        toast('⚠️ Đã mở shop nhưng chưa đồng bộ được lên máy Admin. ' + (reportResult.error || 'Vui lòng kiểm tra kết nối mạng.'));
+      }
+    });
     return;
   }
   if (r && r.error === 'NO_BROWSER') {
@@ -1451,17 +1471,27 @@ $('openSelectedBtn').onclick = async () => {
   const list = getVisibleShopsForRole().filter((s) => selectedIds.has(s.id));
   if (!list.length) return;
   toast(`Đang mở lần lượt ${list.length} gian hàng...`);
+  let openedCount = 0;
   for (let i = 0; i < list.length; i++) {
     const mode = getOpenActionForMode(getShopPermMode(list[i]));
-    await window.api.openShop(list[i].id, mode);
-    runningIds.add(list[i].id);
-    updateCardsRunningStatus();
+    const result = await window.api.openShop(list[i].id, mode);
+    if (result && result.ok) {
+      runningIds.add(list[i].id);
+      openedCount++;
+      updateCardsRunningStatus();
+    }
     if (i < list.length - 1) {
       await new Promise((r) => setTimeout(r, 650));
     }
   }
-  await reportMyActiveShops();
-  toast(`Đã mở xong ${list.length} gian hàng!`);
+  const reportResult = await reportMyActiveShops();
+  if (reportResult && !reportResult.ok && !reportResult.queued) {
+    toast(`Đã mở ${openedCount}/${list.length} shop. ⚠️ Chưa đồng bộ được lên máy Admin: ${reportResult.error || 'Vui lòng kiểm tra kết nối mạng.'}`);
+  } else if (openedCount < list.length) {
+    toast(`Đã mở ${openedCount}/${list.length} shop; một số shop mở không thành công.`);
+  } else {
+    toast(`Đã mở xong ${openedCount} gian hàng!`);
+  }
 };
 
 $('closeAllBtn').onclick = async () => {

@@ -608,6 +608,7 @@ ipcMain.handle('cloud:pull', (_e, force) => pullFromCloud(Boolean(force)));
 
 // Cache trang thai hoat dong online trong bo nho de chong lag / chong chop giat khi mang rot nhip
 const cloudActiveCache = new Map(); // userKey -> { who, role, time, shops, lastFetched }
+let lastActiveFetchWarningAt = 0;
 
 // Dong bo trang thai dang mo / dang dong cua cac gian hang qua Cloud giua may Admin va Nhan vien
 ipcMain.handle('cloud:reportActive', async (_e, data) => {
@@ -638,14 +639,16 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
     });
 
     const b64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-    const url = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/act_${userKey}/${b64}`;
-    let r = await httpsReq(url, 'POST', '');
-    if (r.status !== 200) {
-      // Tu dong thu lai 1 lan sau 400ms phong khi mang bi rot nhip
-      await new Promise((res) => setTimeout(res, 400));
+    const url = `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${encodeURIComponent(cloudKey)}/act_${encodeURIComponent(userKey)}/${b64}`;
+    let r;
+    for (let attempt = 0; attempt < 3; attempt++) {
       r = await httpsReq(url, 'POST', '');
+      if (r.status === 200) return { ok: true };
+      if (attempt < 2) {
+        await new Promise((res) => setTimeout(res, 300 * (attempt + 1)));
+      }
     }
-    return { ok: r.status === 200 };
+    return { ok: false, error: r.error || `Cloud trả về HTTP ${r.status}`, status: r.status };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -663,14 +666,19 @@ ipcMain.handle('cloud:getActive', async () => {
     await Promise.all(
       uniqueKeys.map(async (k) => {
         try {
-          const res = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${cloudKey}/act_${k}`, 'GET');
+          const res = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/act_${encodeURIComponent(k)}`, 'GET');
           if (res.status === 200 && res.body) {
             let raw = res.body.trim();
             if (raw.startsWith('"') && raw.endsWith('"')) {
               try { raw = JSON.parse(raw); } catch {}
             }
             if (raw && raw !== 'OFF' && raw.length > 5) {
-              const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+              let parsed;
+              try {
+                parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+              } catch {
+                parsed = JSON.parse(raw);
+              }
               if (parsed && typeof parsed === 'object') {
                 cloudActiveCache.set(k, {
                   who: parsed.who || 'Nhân viên',
@@ -686,7 +694,13 @@ ipcMain.handle('cloud:getActive', async () => {
               return;
             }
           }
-        } catch {}
+        } catch (e) {
+          const now = Date.now();
+          if (now - lastActiveFetchWarningAt >= 60000) {
+            console.warn('Không đọc được trạng thái nhân viên từ Cloud:', e.message);
+            lastActiveFetchWarningAt = now;
+          }
+        }
       })
     );
 
@@ -740,7 +754,7 @@ ipcMain.handle('cloud:getActive', async () => {
       users: usersMap
     };
   } catch (e) {
-    return { shops: {}, users: {} };
+    return { shops: {}, users: {}, error: e.message };
   }
 });
 

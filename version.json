@@ -1,10 +1,11 @@
 {
-  "version": "2.1.18",
-  "buildNumber": 227,
+  "version": "2.1.19",
+  "buildNumber": 228,
   "updatedAt": "2026-10-14",
-  "notes": "Fix bugs and improve performance.",
+  "notes": "Sửa đồng bộ trạng thái shop nhân viên lên Admin.",
   "files": [
     "index.html",
+    "main.js",
     "renderer.js",
     "preload.js",
     "version.json"
