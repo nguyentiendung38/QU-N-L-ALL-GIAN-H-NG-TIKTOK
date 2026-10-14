@@ -22,6 +22,7 @@ const DEFAULT_ADS =
   'https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&btm_pre_unit_params=%7B%22btm_origin%22%3A%22sidebar_menu_Qu%E1%BA%A3ng+c%C3%A1o+c%E1%BB%ADa+h%C3%A0ng%22%7D&mpa=1&activated_tab_id=0&shop_region=VN';
 // Khong gan cung khoang thoi gian: de TikTok tu mo ngay hien tai
 const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=all';
+const DEFAULT_SHOPEE_URL = 'https://subaccount.shopee.com/login/';
 const DEFAULT_CSKH_CHAT =
   'https://seller-vn.tiktok.com/chat/inbox/current?oec_seller_id=7494826072462165266&shop_region=VN&lang=en&from=seller_center_navigation_im';
 const DEFAULT_CSKH_ORDERS =
@@ -1100,7 +1101,9 @@ ipcMain.handle('shops:import', async () => {
       const clean = {
         id: item.id ? String(item.id) : (Date.now() + Math.floor(Math.random() * 10000)).toString(36),
         name: String(item.name).trim(),
-        adsUrl: item.adsUrl || item.sellerUrl || DEFAULT_ADS,
+        platform: item.platform === 'shopee' ? 'shopee' : 'tiktok',
+        sellerUrl: typeof item.sellerUrl === 'string' ? item.sellerUrl.trim() : '',
+        adsUrl: item.adsUrl || (item.platform === 'shopee' ? DEFAULT_ADS : item.sellerUrl) || DEFAULT_ADS,
         ordersUrl: item.ordersUrl || DEFAULT_ORDERS,
         cskhChatUrl: item.cskhChatUrl || DEFAULT_CSKH_CHAT,
         cskhOrdersUrl: item.cskhOrdersUrl || DEFAULT_CSKH_ORDERS,
@@ -2122,7 +2125,9 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl, allowGmvExtension
   if (!browser) return { ok: false, error: 'NO_BROWSER' };
 
   const urls = [];
-  if (overrideUrl && typeof overrideUrl === 'string' && overrideUrl.startsWith('http')) {
+  if (shop.platform === 'shopee') {
+    urls.push(shop.sellerUrl || DEFAULT_SHOPEE_URL);
+  } else if (overrideUrl && typeof overrideUrl === 'string' && overrideUrl.startsWith('http')) {
     urls.push(overrideUrl);
   } else {
     if (which === 'tiktok' || which === 'seller') urls.push(shop.sellerUrl || 'https://seller-vn.tiktok.com/homepage');
@@ -2150,7 +2155,7 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl, allowGmvExtension
     } catch {}
   }
 
-  const extensionAllowed = allowGmvExtension === true;
+  const extensionAllowed = shop.platform !== 'shopee' && allowGmvExtension === true;
   const extDir = extensionAllowed ? getExtensionDir() : null;
 
   // Chi quet cua so cu khi profile dang chay; tranh khoi dong PowerShell tren moi lan mo shop.
@@ -2170,7 +2175,7 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl, allowGmvExtension
     return {
       ok: true,
       alreadyOpen: true,
-      extensionAccessNeedsRestart: !extensionAllowed
+      extensionAccessNeedsRestart: shop.platform !== 'shopee' && !extensionAllowed
     };
   }
 

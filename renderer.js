@@ -1,6 +1,8 @@
 const DEFAULT_ADS =
   'https://seller-vn.tiktok.com/ads-creation/dashboard?origin=SC_ads_tab_button_PC&btm_pre_unit_params=%7B%22btm_origin%22%3A%22sidebar_menu_Qu%E1%BA%A3ng+c%C3%A1o+c%E1%BB%ADa+h%C3%A0ng%22%7D&mpa=1&activated_tab_id=0&shop_region=VN';
 const DEFAULT_ORDERS = 'https://seller-vn.tiktok.com/order?selected_sort=6&tab=all';
+const DEFAULT_TIKTOK_URL = 'https://seller-vn.tiktok.com/homepage';
+const DEFAULT_SHOPEE_URL = 'https://subaccount.shopee.com/login/';
 const DEFAULT_CSKH_CHAT =
   'https://seller-vn.tiktok.com/chat/inbox/current?oec_seller_id=7494826072462165266&shop_region=VN&lang=en&from=seller_center_navigation_im';
 const DEFAULT_CSKH_ORDERS =
@@ -45,6 +47,7 @@ let searchQuery = '';
 let searchRenderTimer = null;
 let activeGroup = '__ALL__';
 let activeMember = 'ALL';
+let activePlatform = 'ALL';
 let draggedShopId = null;
 let shopNameTooltipTimer = null;
 let shopNameTooltip = null;
@@ -1325,6 +1328,7 @@ function getFilteredShops() {
   const baseShops = getVisibleShopsForRole();
 
   return baseShops.filter((s) => {
+    if (activePlatform !== 'ALL' && (s.platform || 'tiktok') !== activePlatform) return false;
     if (activeGroup === '__RUNNING__' && !isShopActive(s.id)) return false;
     if (activeGroup !== '__ALL__' && activeGroup !== '__RUNNING__') {
       if ((s.group || '').trim() !== activeGroup) return false;
@@ -1393,11 +1397,18 @@ $('memberFilterSelect').onchange = (e) => {
   render();
 };
 
+$('platformFilterSelect').onchange = (e) => {
+  activePlatform = e.target.value || 'ALL';
+  render();
+};
+
 function renderGroupTabs() {
   const wrap = $('groupTabs');
   wrap.innerHTML = '';
 
-  const roleShops = getVisibleShopsForRole();
+  const roleShops = getVisibleShopsForRole().filter(
+    (shop) => activePlatform === 'ALL' || (shop.platform || 'tiktok') === activePlatform
+  );
   const groups = Array.from(
     new Set(roleShops.map((s) => (s.group || '').trim()).filter(Boolean))
   );
@@ -1707,6 +1718,11 @@ function render() {
       metaRow.appendChild(gb);
     }
 
+    const platformBadge = document.createElement('span');
+    platformBadge.className = 'badge group-badge';
+    platformBadge.textContent = s.platform === 'shopee' ? '🛒 Shopee' : '🎵 TikTok';
+    metaRow.appendChild(platformBadge);
+
     const proxyShort = formatProxyBadge(s.proxy);
     if (proxyShort) {
       const savedProxyState = proxyStatusMap.get(s.id);
@@ -1745,7 +1761,15 @@ function render() {
     const actions = document.createElement('div');
     actions.className = 'actions';
 
-    if (!isMemberMode()) {
+    if (s.platform === 'shopee') {
+      const openBtn = mkBtn(
+        isRunning ? '⚡ Đưa Shopee lên trước' : '🛒 Mở Shopee',
+        'primary both',
+        () => openShop(s, 'seller'),
+        'Mở trang quản lý tài khoản Shopee trên Chrome riêng của shop'
+      );
+      actions.append(openBtn);
+    } else if (!isMemberMode()) {
       // Giao diện Quản trị viên (Admin): 1 nút duy nhất để vào thẳng trang quản lý TikTok Shop!
       const openBtn = mkBtn(
         isRunning ? '⚡ Đưa cửa sổ lên trước' : '🚀 Mở TikTok Shop',
@@ -1854,12 +1878,12 @@ async function openShop(s, which) {
   }
 
   let overrideUrl = '';
-  if (isMemberMode() && currentUser && currentUser.member) {
+  if (s.platform !== 'shopee' && isMemberMode() && currentUser && currentUser.member) {
     if (which === 'ads') overrideUrl = currentUser.member.adsUrl || s.adsUrl || DEFAULT_ADS;
     if (which === 'cskh_orders') overrideUrl = currentUser.member.cskhOrdersUrl || s.cskhOrdersUrl || DEFAULT_CSKH_ORDERS;
   }
 
-  const allowGmvExtension = canCurrentUserUseGmvExtension();
+  const allowGmvExtension = s.platform !== 'shopee' && canCurrentUserUseGmvExtension();
   let r = await window.api.openShop(s.id, which, overrideUrl, allowGmvExtension);
   if (r && !r.ok && r.error === 'Thieu link de mo') {
     r = await window.api.openShop(s.id, 'ads', overrideUrl, allowGmvExtension);
@@ -2097,8 +2121,12 @@ function randomColor() {
 
 function openDialog(shop, focusProxy = false) {
   editingId = shop ? shop.id : null;
+  const platform = shop && shop.platform === 'shopee' ? 'shopee' : 'tiktok';
   $('dlgTitle').textContent = shop ? 'Sửa gian hàng' : 'Thêm gian hàng';
   $('fName').value = shop ? shop.name : '';
+  $('fPlatform').value = platform;
+  $('fSellerUrl').value = (shop && shop.sellerUrl) || (platform === 'shopee' ? DEFAULT_SHOPEE_URL : DEFAULT_TIKTOK_URL);
+  $('fSellerUrl').dataset.platformDefault = platform === 'shopee' ? DEFAULT_SHOPEE_URL : DEFAULT_TIKTOK_URL;
   $('fGroup').value = shop && shop.group ? shop.group : '';
   $('fColor').value = shop ? shop.color : randomColor();
   $('fProxy').value = shop && shop.proxy ? shop.proxy : '';
@@ -2114,12 +2142,32 @@ function openDialog(shop, focusProxy = false) {
   }
 }
 
+$('fPlatform').onchange = () => {
+  const sellerUrl = $('fSellerUrl');
+  const previousDefault = sellerUrl.dataset.platformDefault || '';
+  const nextDefault = $('fPlatform').value === 'shopee' ? DEFAULT_SHOPEE_URL : DEFAULT_TIKTOK_URL;
+  if (!sellerUrl.value.trim() || sellerUrl.value.trim() === previousDefault) {
+    sellerUrl.value = nextDefault;
+  }
+  sellerUrl.dataset.platformDefault = nextDefault;
+};
+
 $('addBtn').onclick = () => openDialog(null, false);
 $('cancelBtn').onclick = () => $('dlg').close();
 
 $('saveBtn').onclick = async () => {
   const name = $('fName').value.trim();
   if (!name) return $('fName').focus();
+  const platform = $('fPlatform').value === 'shopee' ? 'shopee' : 'tiktok';
+  const sellerUrl = $('fSellerUrl').value.trim();
+  try {
+    const parsedSellerUrl = new URL(sellerUrl);
+    if (!['http:', 'https:'].includes(parsedSellerUrl.protocol)) throw new Error('invalid protocol');
+  } catch {
+    toast('Vui lòng nhập link quản lý hợp lệ bắt đầu bằng http:// hoặc https://');
+    $('fSellerUrl').focus();
+    return;
+  }
   const newProxy = $('fProxy').value.trim();
 
   let proxyChangedWhileRunning = false;
@@ -2136,6 +2184,8 @@ $('saveBtn').onclick = async () => {
       }
     }
     targetShop.name = name;
+    targetShop.platform = platform;
+    targetShop.sellerUrl = sellerUrl;
     targetShop.group = $('fGroup').value.trim();
     targetShop.color = $('fColor').value;
     targetShop.proxy = newProxy;
@@ -2143,6 +2193,8 @@ $('saveBtn').onclick = async () => {
     targetShop = {
       id: Date.now().toString(36),
       name,
+      platform,
+      sellerUrl,
       group: $('fGroup').value.trim(),
       color: $('fColor').value,
       proxy: newProxy,
@@ -2151,6 +2203,7 @@ $('saveBtn').onclick = async () => {
     shops.push(targetShop);
   }
 
+  activePlatform = platform;
   await persist();
   $('dlg').close();
   render();

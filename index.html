@@ -1523,6 +1523,12 @@
     <option value="ALL">👥 Tất cả thành viên</option>
   </select>
 
+  <select id="platformFilterSelect" class="member-filter-select" title="Lọc gian hàng theo nền tảng">
+    <option value="ALL">🛍️ Tất cả nền tảng</option>
+    <option value="tiktok">🎵 TikTok Shop</option>
+    <option value="shopee">🛒 Shopee</option>
+  </select>
+
   <div class="group-tabs" id="groupTabs"></div>
 
   <div class="batch-bar">
@@ -1562,6 +1568,17 @@
     <div class="full">
       <label>Tên gian hàng *</label>
       <input type="text" id="fName" placeholder="VD: Gian 01 - Mỹ phẩm chính hãng">
+    </div>
+    <div>
+      <label>Nền tảng</label>
+      <select id="fPlatform" class="member-filter-select" style="width:100%;padding:8px 10px;background:#12161b;border-color:#3a414c;">
+        <option value="tiktok">TikTok Shop</option>
+        <option value="shopee">Shopee</option>
+      </select>
+    </div>
+    <div>
+      <label>Link trang quản lý</label>
+      <input type="url" id="fSellerUrl" placeholder="https://seller-vn.tiktok.com/">
     </div>
     <div>
       <label>Nhóm / Tag phân loại</label>
