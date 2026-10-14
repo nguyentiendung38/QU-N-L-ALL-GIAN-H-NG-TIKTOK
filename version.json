@@ -1,8 +1,8 @@
 {
-  "version": "2.1.29",
-  "buildNumber": 238,
+  "version": "2.1.30",
+  "buildNumber": 239,
   "updatedAt": "2026-10-14",
-  "notes": "Sửa lỗi HTTP 400 khi lưu lịch sử hoạt động",
+  "notes": "FIX LỖI GIAO DIỆN",
   "files": [
     "main.js",
     "main-core.js",

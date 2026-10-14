@@ -1723,10 +1723,6 @@ async function openShop(s, which) {
     if (!r.alreadyOpen) recordShopActivity('open', s);
     render();
     const reportPromise = reportMyActiveShops();
-    const openedMessage = r.alreadyOpen
-      ? 'Cửa sổ ' + s.name + ' đang mở (đã đưa lên trước)'
-      : 'Đang mở ' + s.name + '…';
-    toast(openedMessage);
     reportPromise.then((reportResult) => {
       if (reportResult && !reportResult.ok && !reportResult.queued) {
         toast('⚠️ Đã mở shop nhưng chưa đồng bộ được lên máy Admin. ' + (reportResult.error || 'Vui lòng kiểm tra kết nối mạng.'));
