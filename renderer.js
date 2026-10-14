@@ -796,6 +796,14 @@ if ($('otaApplyBtn')) {
       btn.disabled = false;
       btn.textContent = '⚡ Cập nhật ngay (2s)';
       toast('❌ Lỗi cập nhật: ' + ((res && res.error) || 'Không tải được file'));
+    } else if (window.api.restartApp) {
+      btn.textContent = '🔄 Đang khởi động lại...';
+      toast('✅ Đã cập nhật. Ứng dụng đang khởi động lại; các cửa sổ Chrome shop vẫn giữ nguyên.');
+      window.api.restartApp();
+    } else {
+      btn.disabled = false;
+      btn.textContent = '⚡ Cập nhật ngay (2s)';
+      toast('✅ Đã tải cập nhật. Vui lòng cài bản nền tảng OTA mới để áp dụng thay đổi tiến trình nền.');
     }
   };
 }

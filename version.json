@@ -1,11 +1,13 @@
 {
-  "version": "2.1.20",
-  "buildNumber": 229,
+  "version": "2.1.21",
+  "buildNumber": 230,
   "updatedAt": "2026-10-14",
-  "notes": "Tách trạng thái giám sát khỏi quản lý Chrome; mở và đóng shop dứt khoát hơn.",
+  "notes": "Cập nhật OTA nền và đồng bộ trạng thái shop",
   "files": [
-    "index.html",
     "main.js",
+    "main-core.js",
+    "security.js",
+    "index.html",
     "renderer.js",
     "preload.js",
     "version.json"

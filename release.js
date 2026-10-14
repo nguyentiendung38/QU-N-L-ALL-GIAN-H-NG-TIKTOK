@@ -48,7 +48,7 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
     buildNumber: 210,
     updatedAt: '',
     notes: '',
-    files: ['main.js', 'index.html', 'renderer.js', 'preload.js', 'version.json']
+    files: ['main.js', 'main-core.js', 'security.js', 'index.html', 'renderer.js', 'preload.js', 'version.json']
   };
   try {
     verData = JSON.parse(fs.readFileSync(verFile, 'utf8'));
@@ -75,18 +75,30 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
 
   // 1. Tạo gói bundle code mới để upload lên Cloud OTA (bytebin + keyvalue)
   console.log('☁️ Đang đóng gói và đẩy bản cập nhật lên Cloud OTA...');
+  const updateFiles = Array.from(new Set([
+    ...(Array.isArray(verData.files) ? verData.files : []),
+    'main.js',
+    'main-core.js',
+    'security.js',
+    'index.html',
+    'renderer.js',
+    'preload.js',
+    'version.json'
+  ]));
+  const files = {};
+  for (const file of updateFiles) {
+    const fullPath = path.resolve(__dirname, file);
+    if (!fullPath.startsWith(__dirname + path.sep)) {
+      throw new Error(`Đường dẫn file OTA không hợp lệ: ${file}`);
+    }
+    files[file] = fs.readFileSync(fullPath, 'utf8');
+  }
   const bundle = {
     version: verData.version,
     buildNumber: verData.buildNumber,
     updatedAt: verData.updatedAt,
     notes: verData.notes,
-    files: {
-      'version.json': fs.readFileSync(verFile, 'utf8'),
-      'main.js': fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8'),
-      'index.html': fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'),
-      'renderer.js': fs.readFileSync(path.join(__dirname, 'renderer.js'), 'utf8'),
-      'preload.js': fs.readFileSync(path.join(__dirname, 'preload.js'), 'utf8')
-    }
+    files
   };
 
   const bbRes = await httpsReq('https://bytebin.lucko.me/post', 'POST', JSON.stringify(bundle), {
@@ -99,33 +111,39 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
       bbKey = JSON.parse(bbRes.body).key || '';
     } catch {}
   }
-
-  if (bbKey) {
-    console.log(`✅ Upload gói code thành công (Key: ${bbKey})!`);
-    const manifest = `${bbKey}-${verData.buildNumber}`;
-    const mRes = await httpsReq(
-      `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${CLOUD_APP_KEY}/otamanifest/${manifest}`,
-      'POST',
-      ''
-    );
-    if (mRes.status === 200) {
-      console.log('✅ Đã kích hoạt bản cập nhật mới trên Cloud OTA!');
-    } else {
-      console.log('⚠️ Cảnh báo: Kích hoạt manifest trên Cloud trả về:', mRes.status);
-    }
-  } else {
-    console.log('⚠️ Không upload được lên bytebin:', bbRes.status, bbRes.error);
+  if (!bbKey) {
+    throw new Error(`Không upload được gói OTA lên bytebin: HTTP ${bbRes.status} ${bbRes.error || ''}`);
   }
+  console.log(`✅ Upload gói code thành công (Key: ${bbKey})!`);
 
-  // 2. Commit & Push lên GitHub
+  // 2. Commit & Push source files used by the release
   try {
     console.log('\n📦 Đang git add & git commit & git push...');
-    execSync('git add .', { stdio: 'inherit' });
-    execSync(`git commit -m "release: v${verData.version} - ${verData.notes}"`, { stdio: 'inherit' });
+    const sourceFiles = Array.from(new Set([
+      ...updateFiles,
+      'release.js',
+      'package.json',
+      'package-lock.json'
+    ]));
+    execSync(`git add -- ${sourceFiles.map((file) => `"${file}"`).join(' ')}`, { stdio: 'inherit' });
+    execSync(
+      `git commit -m "release: v${verData.version} - ${verData.notes}" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"`,
+      { stdio: 'inherit' }
+    );
     execSync('git push', { stdio: 'inherit' });
     console.log('\n✅ ĐÃ ĐẨY LÊN GITHUB THÀNH CÔNG!');
-    console.log(`🔔 TẤT CẢ MÁY KHÁCH HÀNG / NHÂN VIÊN SẼ THẤY THÔNG BÁO CẬP NHẬT "v${verData.version}" NGAY LẬP TỨC!\n`);
   } catch (e) {
-    console.error('Lỗi khi git push:', e.message);
+    throw new Error(`Không commit/push được source release: ${e.message}`);
   }
+
+  const manifest = `${bbKey}-${verData.buildNumber}`;
+  const mRes = await httpsReq(
+    `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${CLOUD_APP_KEY}/otamanifest/${manifest}`,
+    'POST',
+    ''
+  );
+  if (mRes.status !== 200) {
+    throw new Error(`Đã push source nhưng không kích hoạt được OTA manifest: HTTP ${mRes.status} ${mRes.error || ''}`);
+  }
+  console.log(`✅ Đã kích hoạt OTA v${verData.version}. Máy khách có thể bấm "Cập nhật ngay".\n`);
 })();
