@@ -27,6 +27,8 @@ let searchQuery = '';
 let activeGroup = '__ALL__';
 let activeMember = 'ALL';
 let draggedShopId = null;
+let shopNameTooltipTimer = null;
+let shopNameTooltip = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -61,6 +63,36 @@ function escapeHtml(value) {
     '"': '&quot;',
     "'": '&#39;'
   })[char]);
+}
+
+function showShopNameTooltip(target, name) {
+  clearTimeout(shopNameTooltipTimer);
+  shopNameTooltipTimer = setTimeout(() => {
+    if (!shopNameTooltip) {
+      shopNameTooltip = document.createElement('div');
+      shopNameTooltip.className = 'shop-name-tooltip';
+      document.body.appendChild(shopNameTooltip);
+    }
+    shopNameTooltip.textContent = name;
+    shopNameTooltip.style.visibility = 'hidden';
+    shopNameTooltip.classList.add('visible');
+
+    const targetRect = target.getBoundingClientRect();
+    const tooltipRect = shopNameTooltip.getBoundingClientRect();
+    const left = Math.max(8, Math.min(targetRect.left, window.innerWidth - tooltipRect.width - 8));
+    const top = targetRect.bottom + tooltipRect.height + 8 <= window.innerHeight
+      ? targetRect.bottom + 6
+      : Math.max(8, targetRect.top - tooltipRect.height - 6);
+
+    shopNameTooltip.style.left = `${left}px`;
+    shopNameTooltip.style.top = `${top}px`;
+    shopNameTooltip.style.visibility = 'visible';
+  }, 350);
+}
+
+function hideShopNameTooltip() {
+  clearTimeout(shopNameTooltipTimer);
+  if (shopNameTooltip) shopNameTooltip.classList.remove('visible');
 }
 
 function slugUsername(str) {
@@ -1072,7 +1104,7 @@ function render() {
       card.title = '💡 Giữ chuột kéo thả để đổi thứ tự gian hàng';
 
       card.addEventListener('dragstart', (e) => {
-        if (e.target.closest('button, input, select, .badge, .status-pill, .actions, .tools')) {
+        if (e.target.closest('button, input, select, .badge, .status-pill, .actions, .tools, .name')) {
           e.preventDefault();
           return;
         }
@@ -1148,6 +1180,9 @@ function render() {
     nm.textContent = s.name;
     nm.title = s.name;
     nm.setAttribute('aria-label', s.name);
+    nm.addEventListener('mouseenter', () => showShopNameTooltip(nm, s.name));
+    nm.addEventListener('mouseleave', hideShopNameTooltip);
+    nm.addEventListener('dragstart', (e) => e.preventDefault());
     headInfo.appendChild(nm);
 
     const statusPill = document.createElement('div');

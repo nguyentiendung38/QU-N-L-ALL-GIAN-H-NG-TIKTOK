@@ -1,8 +1,8 @@
 {
-  "version": "2.1.25",
-  "buildNumber": 234,
+  "version": "2.1.26",
+  "buildNumber": 235,
   "updatedAt": "2026-10-14",
-  "notes": "bổ sung khung giao diện shop",
+  "notes": "bổ sung khung giao diện shop2",
   "files": [
     "main.js",
     "main-core.js",
