@@ -316,6 +316,28 @@
     color: #56d364;
     font-size: 11.5px;
   }
+  .dashboard-activity-scroll {
+    max-height: 190px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-color: #4b5563 #171c23;
+    scrollbar-width: thin;
+  }
+  .dashboard-activity-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .dashboard-activity-scroll::-webkit-scrollbar-track {
+    background: #171c23;
+    border-radius: 4px;
+  }
+  .dashboard-activity-scroll::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border: 2px solid #171c23;
+    border-radius: 4px;
+  }
+  .dashboard-activity-scroll::-webkit-scrollbar-thumb:hover {
+    background: #687386;
+  }
   .dashboard-activity-list {
     display: flex;
     flex-direction: column;
