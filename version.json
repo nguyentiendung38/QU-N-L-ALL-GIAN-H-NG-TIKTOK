@@ -1,8 +1,8 @@
 {
-  "version": "2.1.23",
-  "buildNumber": 232,
+  "version": "2.1.24",
+  "buildNumber": 233,
   "updatedAt": "2026-10-14",
-  "notes": "Sửa nhận diện tiến trình Chrome theo shop",
+  "notes": "Sửa lỗi đóng Chrome theo profile shop trên Windows",
   "files": [
     "main.js",
     "main-core.js",

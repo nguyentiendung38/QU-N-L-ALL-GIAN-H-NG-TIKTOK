@@ -911,6 +911,7 @@ ipcMain.handle('browser:pick', async () => {
 
 // Quan ly cac tien trinh Chrome dang mo theo tung shop
 const runningShops = new Map();
+const shopChildProcesses = new Map();
 const proxyForwarders = new Map();
 
 function isProcessAlive(pid) {
@@ -925,6 +926,7 @@ function isProcessAlive(pid) {
 }
 
 function isProfileLocked(profileDir) {
+  if (process.platform === 'win32') return false;
   const lock = path.join(profileDir, 'lockfile');
   if (!fs.existsSync(lock)) return false;
   try {
@@ -959,7 +961,7 @@ function syncRunningShops() {
         if (saved > 0) pid = saved;
       } catch {}
     }
-    // Kiem tra ca theo PID va theo lockfile cua Chrome tren Windows
+    // Tren Windows, PID moi la dau hieu dang tin cay; lockfile co the con lai sau khi Chrome dong.
     const alive = (pid && isProcessAlive(pid)) || isProfileLocked(dir);
     if (alive) {
       if (!runningShops.has(s.id) && pid) runningShops.set(s.id, pid);
@@ -1529,6 +1531,7 @@ async function closeShopProcess(id) {
 
   const finish = () => {
     runningShops.delete(id);
+    shopChildProcesses.delete(id);
     stopProxyForwarder(id);
     try {
       fs.unlinkSync(pidFile);
@@ -1537,20 +1540,31 @@ async function closeShopProcess(id) {
     return { ok: true };
   };
 
-  if ((!pid || !isProcessAlive(pid)) && !isProfileLocked(dir)) {
-    return finish();
-  }
-
   if (process.platform === 'win32') {
     const result = await findProfileProcessIds(dir);
     if (result.error) {
       return { ok: false, error: result.error };
     }
     const pids = result.pids;
-    if (!pids.length && isProfileLocked(dir)) {
-      return { ok: false, error: 'Chrome vẫn đang mở nhưng không tìm thấy tiến trình của shop để đóng' };
+    const launchedChild = shopChildProcesses.get(id);
+    if (
+      launchedChild &&
+      launchedChild.pid &&
+      launchedChild.exitCode === null &&
+      isProcessAlive(launchedChild.pid) &&
+      !pids.includes(launchedChild.pid)
+    ) {
+      pids.push(launchedChild.pid);
     }
-    if (!pids.length) return finish();
+    if (!pids.length) {
+      if (pid && isProcessAlive(pid)) {
+        return {
+          ok: false,
+          error: `PID Chrome đã lưu (${pid}) vẫn hoạt động nhưng không xác minh được thuộc profile shop này; không đóng để tránh ảnh hưởng Chrome khác.`
+        };
+      }
+      return finish();
+    }
     const killErrors = (await Promise.all(pids.map(killShopPid))).filter(Boolean);
     pid = pids.includes(pid) ? pid : 0;
     if (!(await waitForShopExit(id, pid, 2000))) {
@@ -1565,7 +1579,13 @@ async function closeShopProcess(id) {
       return { ok: false, error: `Chrome vẫn còn chạy sau khi yêu cầu đóng. Hãy thử lại.${detail}` };
     }
     return finish();
-  } else if (pid && isProcessAlive(pid)) {
+  }
+
+  if ((!pid || !isProcessAlive(pid)) && !isProfileLocked(dir)) {
+    return finish();
+  }
+
+  if (pid && isProcessAlive(pid)) {
     try {
       process.kill(pid, 'SIGTERM');
     } catch {}
@@ -1868,6 +1888,7 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
     child.once('error', (e) => resolve({ ok: false, error: e.message }));
     child.once('spawn', () => {
       runningShops.set(id, child.pid);
+      shopChildProcesses.set(id, child);
       try {
         fs.writeFileSync(pidFile, String(child.pid), 'utf8');
       } catch {}
@@ -1879,6 +1900,9 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
       }
 
       child.once('exit', () => {
+        if (shopChildProcesses.get(id) === child) {
+          shopChildProcesses.delete(id);
+        }
         // Cho 1.2s de xac nhan Chrome co thuc su dong hay chi la tien trinh launcher ban dau thoat
         setTimeout(() => {
           if (isProfileLocked(dir)) {
