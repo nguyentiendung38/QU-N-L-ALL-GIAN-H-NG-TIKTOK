@@ -520,13 +520,19 @@ ipcMain.handle('ota:apply', async () => {
 });
 
 let isRestartingApp = false;
+const OTA_RESTART_FLAG = '--after-ota-update';
+
+function getOtaRestartArgs() {
+  return [...process.argv.slice(1).filter((arg) => arg !== OTA_RESTART_FLAG), OTA_RESTART_FLAG];
+}
+
 function quotePowerShell(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
 function startWindowsRestartSupervisor() {
   const executablePath = process.execPath;
-  const restartArgs = process.argv.slice(1);
+  const restartArgs = getOtaRestartArgs();
   const encodedScript = [
     `$parentPid = ${process.pid}`,
     'while (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 250 }',
@@ -550,17 +556,34 @@ function startWindowsRestartSupervisor() {
   });
 }
 
+ipcMain.handle('app:wasOtaRestart', () => process.argv.includes(OTA_RESTART_FLAG));
+
 ipcMain.handle('app:restart', async () => {
   if (isRestartingApp) return { ok: true, restarting: true };
   try {
     if (process.platform === 'win32') {
-      await startWindowsRestartSupervisor();
+      let restartScheduled = false;
+      try {
+        app.relaunch({ args: getOtaRestartArgs() });
+        restartScheduled = true;
+      } catch (error) {
+        console.error('Không đặt lịch khởi động lại bằng Electron được:', error);
+      }
+      try {
+        await startWindowsRestartSupervisor();
+        restartScheduled = true;
+      } catch (error) {
+        console.error('Không tạo được tiến trình chờ khởi động lại:', error);
+      }
+      if (!restartScheduled) {
+        throw new Error('Không thể đặt lịch khởi động lại ứng dụng');
+      }
       isRestartingApp = true;
       setTimeout(() => app.quit(), 300);
     } else {
       app.relaunch({
         execPath: process.execPath,
-        args: process.argv.slice(1)
+        args: getOtaRestartArgs()
       });
       isRestartingApp = true;
       setTimeout(() => app.quit(), 300);

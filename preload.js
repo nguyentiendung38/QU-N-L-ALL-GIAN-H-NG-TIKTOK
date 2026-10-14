@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   checkOtaUpdate: () => ipcRenderer.invoke('ota:check'),
   applyOtaUpdate: () => ipcRenderer.invoke('ota:apply'),
   restartApp: () => ipcRenderer.invoke('app:restart'),
+  wasOtaRestart: () => ipcRenderer.invoke('app:wasOtaRestart'),
   openShop: (id, which, overrideUrl, allowGmvExtension) =>
     ipcRenderer.invoke('shop:open', id, which, overrideUrl, allowGmvExtension === true),
   closeShop: (id) => ipcRenderer.invoke('shop:close', id),

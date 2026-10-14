@@ -1218,7 +1218,7 @@ if ($('otaApplyBtn')) {
           return;
         }
         btn.textContent = '🔄 Đang khởi động lại...';
-        toast('✅ Đã cập nhật. Ứng dụng đang khởi động lại; các cửa sổ Chrome shop vẫn giữ nguyên.');
+        toast('✅ Đã cập nhật. Ứng dụng sẽ mở lại tại màn hình đăng nhập; các cửa sổ Chrome shop vẫn giữ nguyên.');
       } catch (error) {
         btn.disabled = false;
         btn.textContent = '⚡ Cập nhật ngay (2s)';
@@ -2716,13 +2716,16 @@ $('pickBrowserBtn').onclick = async () => {
   refreshBrowser();
   // Kiem tra neu co tai khoan da duoc ghi nho tren may nay -> tu dong dang nhap
   let autoLoggedIn = false;
+  const wasOtaRestart = window.api.wasOtaRestart
+    ? await window.api.wasOtaRestart()
+    : false;
   try {
     const saved = await window.api.getSavedLogin();
     if (saved && saved.user && saved.pass) {
       if ($('loginUser')) $('loginUser').value = saved.user;
       if ($('loginPass')) $('loginPass').value = saved.pass;
       if ($('rememberLoginChk')) $('rememberLoginChk').checked = true;
-      autoLoggedIn = await doLogin(true);
+      if (!wasOtaRestart) autoLoggedIn = await doLogin(true);
     }
   } catch (err) {
     console.warn('Auto login error:', err);
