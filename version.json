@@ -1,6 +1,6 @@
 {
-  "version": "2.1.28",
-  "buildNumber": 237,
+  "version": "2.1.29",
+  "buildNumber": 238,
   "updatedAt": "2026-10-14",
   "notes": "Sửa lỗi HTTP 400 khi lưu lịch sử hoạt động",
   "files": [
