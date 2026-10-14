@@ -1422,74 +1422,158 @@ Write-Output "NOT_FOUND"
   });
 }
 
-// Dong cua so Chrome cua 1 gian hang
-function closeShopProcess(id) {
+function findProfileProcessIds(profileDir) {
   return new Promise((resolve) => {
-    const dir = path.join(profilesRoot(), safeId(id));
-    const pidFile = path.join(dir, '.chrome_pid');
-    let pid = runningShops.get(id);
-    if (!pid && fs.existsSync(pidFile)) {
-      try {
-        const saved = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
-        if (saved > 0) pid = saved;
-      } catch {}
-    }
-
-    const finish = () => {
-      runningShops.delete(id);
-      stopProxyForwarder(id);
-      try {
-        fs.unlinkSync(pidFile);
-      } catch {}
-      notifyRunningChanged(true);
-      resolve({ ok: true });
+    const escapedDir = profileDir.replace(/'/g, "''");
+    const script = `
+$profileDir = '${escapedDir}'
+Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' or Name = 'msedge.exe'" |
+  Where-Object { $_.CommandLine -and $_.CommandLine.Contains($profileDir) } |
+  ForEach-Object { $_.ProcessId }
+`;
+    let stdout = '';
+    let settled = false;
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'], {
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'ignore']
+    });
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      resolve({ pids: [], error: 'Hết thời gian tìm tiến trình Chrome của shop' });
+    }, 5000);
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const pids = stdout
+        .split(/\s+/)
+        .map((value) => parseInt(value, 10))
+        .filter((value) => value > 0);
+      resolve({ pids, error });
     };
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    child.once('error', (error) => finish(error.message));
+    child.once('close', (code) => finish(code === 0 ? null : `PowerShell thoát với mã ${code}`));
+    child.stdin.end(script);
+  });
+}
 
-    if (!pid || !isProcessAlive(pid)) {
+function killShopPid(pid) {
+  return new Promise((resolve) => {
+    const child = spawn('taskkill', ['/F', '/PID', String(pid), '/T'], {
+      windowsHide: true,
+      stdio: 'ignore'
+    });
+    child.once('error', (error) => resolve(error.message));
+    child.once('close', () => resolve(null));
+  });
+}
+
+function waitForShopExit(id, pid, timeoutMs) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const check = () => {
+      const dir = path.join(profilesRoot(), safeId(id));
+      if ((!pid || !isProcessAlive(pid)) && !isProfileLocked(dir)) {
+        resolve(true);
+      } else if (Date.now() - startedAt >= timeoutMs) {
+        resolve(false);
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+}
+
+// Dong Chrome theo profile rieng cua shop va chi bao thanh cong khi profile da thoat.
+async function closeShopProcess(id) {
+  const dir = path.join(profilesRoot(), safeId(id));
+  const pidFile = path.join(dir, '.chrome_pid');
+  let pid = runningShops.get(id);
+  if (!pid && fs.existsSync(pidFile)) {
+    try {
+      const saved = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+      if (saved > 0) pid = saved;
+    } catch {}
+  }
+
+  const finish = () => {
+    runningShops.delete(id);
+    stopProxyForwarder(id);
+    try {
+      fs.unlinkSync(pidFile);
+    } catch {}
+    notifyRunningChanged(true);
+    return { ok: true };
+  };
+
+  if ((!pid || !isProcessAlive(pid)) && !isProfileLocked(dir)) {
+    return finish();
+  }
+
+  if (process.platform === 'win32') {
+    const result = await findProfileProcessIds(dir);
+    if (result.error) {
+      return { ok: false, error: result.error };
+    }
+    const pids = result.pids;
+    if (!pids.length && isProfileLocked(dir)) {
+      return { ok: false, error: 'Chrome vẫn đang mở nhưng không tìm thấy tiến trình của shop để đóng' };
+    }
+    if (!pids.length) return finish();
+    await Promise.all(pids.map(killShopPid));
+    pid = pids.includes(pid) ? pid : 0;
+    if (!(await waitForShopExit(id, pid, 2000))) {
+      return { ok: false, error: 'Chưa đóng được Chrome. Hãy thử đóng lại hoặc kiểm tra cửa sổ Chrome của shop.' };
+    }
+    const remaining = await findProfileProcessIds(dir);
+    if (remaining.error) {
+      return { ok: false, error: remaining.error };
+    }
+    if (remaining.pids.length || isProfileLocked(dir)) {
+      return { ok: false, error: 'Chrome vẫn còn chạy sau khi yêu cầu đóng. Hãy thử lại.' };
+    }
+    return finish();
+  } else if (pid && isProcessAlive(pid)) {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {}
+  }
+
+  if (await waitForShopExit(id, pid, 2000)) {
+    return finish();
+  }
+
+  if (process.platform !== 'win32' && pid && isProcessAlive(pid)) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {}
+    if (await waitForShopExit(id, pid, 1500)) {
       return finish();
     }
+  }
 
-    if (process.platform === 'win32') {
-      const tk = spawn('taskkill', ['/PID', String(pid), '/T'], { windowsHide: true, stdio: 'ignore' });
-      tk.on('close', () => {
-        setTimeout(() => {
-          if (isProcessAlive(pid)) {
-            const tkForce = spawn('taskkill', ['/F', '/PID', String(pid), '/T'], {
-              windowsHide: true,
-              stdio: 'ignore'
-            });
-            tkForce.on('close', finish);
-            tkForce.on('error', finish);
-          } else {
-            finish();
-          }
-        }, 400);
-      });
-      tk.on('error', finish);
-    } else {
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch {}
-      setTimeout(() => {
-        if (isProcessAlive(pid)) {
-          try {
-            process.kill(pid, 'SIGKILL');
-          } catch {}
-        }
-        finish();
-      }, 400);
-    }
-  });
+  return { ok: false, error: 'Chưa đóng được Chrome. Hãy thử đóng lại hoặc kiểm tra cửa sổ Chrome của shop.' };
 }
 
 ipcMain.handle('shop:close', (_e, id) => closeShopProcess(id));
 
 ipcMain.handle('shops:closeAll', async () => {
   const ids = syncRunningShops();
-  for (const id of ids) {
-    await closeShopProcess(id);
-  }
-  return { ok: true, closedCount: ids.length };
+  const results = await Promise.all(ids.map((id) => closeShopProcess(id)));
+  const closedCount = results.filter((result) => result && result.ok).length;
+  const errors = results.filter((result) => result && !result.ok).map((result) => result.error);
+  return {
+    ok: errors.length === 0,
+    closedCount,
+    closedIds: ids.filter((_id, index) => results[index] && results[index].ok),
+    error: errors.length ? errors.join('; ') : undefined
+  };
 });
 
 const EXTENSION_ID = 'elhkhdcolgkmokglojljlidmahmlnofh';
@@ -1695,8 +1779,11 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
 
   const extDir = getExtensionDir();
 
-  // Kiem tra neu Chrome cua gian nay dang chay: dua cua so cu len tren va KHONG mo Chrome moi
-  const focusRes = await focusShopWindow(knownPid, dir);
+  // Chi quet cua so cu khi profile dang chay; tranh khoi dong PowerShell tren moi lan mo shop.
+  const hasExistingProcess = Boolean((knownPid && isProcessAlive(knownPid)) || isProfileLocked(dir));
+  const focusRes = hasExistingProcess
+    ? await focusShopWindow(knownPid, dir)
+    : { ok: false };
   if (focusRes.ok) {
     runningShops.set(id, focusRes.pid);
     try {

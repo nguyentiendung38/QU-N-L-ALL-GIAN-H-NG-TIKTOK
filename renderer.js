@@ -10,8 +10,8 @@ let shops = [];
 let members = [];
 let authConfig = { adminUser: 'admin', adminPass: '123456', requireLogin: true };
 let runningIds = new Set();
-let onlineActiveShops = {}; // { [shopId]: { who: string, role: string, userKey: string, time: number } }
 let onlineActiveUsers = {}; // { [userKey]: { who: string, role: string, isOnline: boolean, isRunning: boolean, shops: string[] } }
+let closingShopIds = new Set();
 let isDeptMonitorCollapsed = (function () {
   try { return localStorage.getItem('deptMonitorCollapsed') === '1'; } catch { return false; }
 })();
@@ -74,7 +74,7 @@ function isMemberMode() {
 }
 
 function isShopActive(shopId) {
-  return runningIds.has(shopId) || Boolean(onlineActiveShops[shopId]);
+  return runningIds.has(shopId);
 }
 
 function getMyUserKey() {
@@ -132,6 +132,7 @@ async function reportMyActiveShops() {
 
 let isRefreshingActive = false;
 async function refreshOnlineActiveShops() {
+  if (isMemberMode()) return;
   if (isRefreshingActive) return;
   isRefreshingActive = true;
   try {
@@ -140,10 +141,7 @@ async function refreshOnlineActiveShops() {
       if (res.error) {
         console.warn('Không tải được trạng thái shop từ Cloud:', res.error);
       } else if (res.shops || res.users) {
-        onlineActiveShops = res.shops || {};
         onlineActiveUsers = res.users || {};
-      } else if (!res.error) {
-        onlineActiveShops = res;
       }
       if (currentUser) {
         updateCardsRunningStatus();
@@ -163,8 +161,7 @@ function updateCardsRunningStatus() {
     const sid = card.dataset.shopId;
     if (!sid) return;
     const isLocalRunning = runningIds.has(sid);
-    const remoteActive = onlineActiveShops[sid];
-    const isRunning = isLocalRunning || Boolean(remoteActive);
+    const isRunning = isLocalRunning;
 
     card.classList.toggle('is-running', isRunning);
 
@@ -176,22 +173,6 @@ function updateCardsRunningStatus() {
       if (isLocalRunning) {
         statusText = 'Đang mở';
         statusTitle = 'Đang mở Chrome trên máy này';
-      } else if (remoteActive) {
-        const roleLabel = remoteActive.role === 'vanhanh' ? 'Vận hành' : (remoteActive.role === 'ads' ? 'Ads' : 'CSKH');
-        statusText = `${roleLabel}: ${remoteActive.who} đang mở`;
-        statusTitle = `Đang được mở làm việc bởi ${remoteActive.who} (Bộ phận ${roleLabel})`;
-      }
-
-      const s = shops.find((x) => x.id === sid);
-      const assigned = getShopMembers(s);
-      if (assigned.length > 0) {
-        const memberLines = assigned.map((m) => {
-          const mStatus = getMemberOnlineStatus(m.id);
-          const isMOpen = Boolean(mStatus && mStatus.isRunning && Array.isArray(mStatus.shops) && mStatus.shops.includes(sid));
-          const pTag = m.permMode === 'vanhanh' ? '📦 Vận hành' : (m.permMode === 'ads' ? '📈 Ads' : '🎧 CSKH');
-          return `• ${pTag} [${m.name}]: ${isMOpen ? '🟢 ĐANG MỞ' : '⚪ ĐÃ ĐÓNG'}`;
-        });
-        statusTitle += '\n\nPhân công phụ trách:\n' + memberLines.join('\n');
       }
 
       pill.innerHTML = `<span class="dot"></span><span class="status-txt">${statusText}</span>`;
@@ -1036,8 +1017,7 @@ function render() {
   filtered.forEach((s) => {
     const realIndex = shops.findIndex((x) => x.id === s.id);
     const isLocalRunning = runningIds.has(s.id);
-    const remoteActive = onlineActiveShops[s.id];
-    const isRunning = isLocalRunning || Boolean(remoteActive);
+    const isRunning = isLocalRunning;
     const shopMode = getShopPermMode(s); // 'cskh' | 'vanhanh' | 'ads'
 
     const card = document.createElement('div');
@@ -1134,23 +1114,9 @@ function render() {
     if (isLocalRunning) {
       statusText = 'Đang mở';
       statusTitle = 'Đang mở Chrome trên máy này';
-    } else if (remoteActive) {
-      const roleLabel = remoteActive.role === 'vanhanh' ? 'Vận hành' : (remoteActive.role === 'ads' ? 'Ads' : 'CSKH');
-      statusText = `${roleLabel}: ${remoteActive.who} đang mở`;
-      statusTitle = `Đang được mở làm việc bởi ${remoteActive.who} (Bộ phận ${roleLabel})`;
     }
 
     const assignedMembers = getShopMembers(s);
-    if (assignedMembers.length > 0) {
-      const memberLines = assignedMembers.map((m) => {
-        const mStatus = getMemberOnlineStatus(m.id);
-        const isMOpen = Boolean(mStatus && mStatus.isRunning && Array.isArray(mStatus.shops) && mStatus.shops.includes(s.id));
-        const pTag = m.permMode === 'vanhanh' ? '📦 Vận hành' : (m.permMode === 'ads' ? '📈 Ads' : '🎧 CSKH');
-        return `• ${pTag} [${m.name}]: ${isMOpen ? '🟢 ĐANG MỞ' : '⚪ ĐÃ ĐÓNG'}`;
-      });
-      statusTitle += '\n\nPhân công phụ trách:\n' + memberLines.join('\n');
-    }
-
     statusPill.innerHTML = `<span class="dot"></span><span class="status-txt">${statusText}</span>`;
     statusPill.title = statusTitle;
 
@@ -1395,12 +1361,37 @@ async function openShop(s, which) {
 }
 
 async function closeSingleShop(s) {
-  const r = await window.api.closeShop(s.id);
-  if (r && r.ok) {
-    runningIds.delete(s.id);
-    updateCardsRunningStatus();
-    reportMyActiveShops();
-    toast('Đã đóng Chrome của gian ' + s.name);
+  if (closingShopIds.has(s.id)) return;
+  closingShopIds.add(s.id);
+  const card = Array.from(document.querySelectorAll('.card[data-shop-id]'))
+    .find((item) => item.dataset.shopId === s.id);
+  const closeBtn = card && card.querySelector('.close-chrome-btn');
+  if (closeBtn) {
+    closeBtn.disabled = true;
+    closeBtn.textContent = '⏳ Đang đóng...';
+  }
+  try {
+    const r = await window.api.closeShop(s.id);
+    if (r && r.ok) {
+      runningIds.delete(s.id);
+      updateCardsRunningStatus();
+      reportMyActiveShops();
+      toast('Đã đóng Chrome của gian ' + s.name);
+    } else {
+      if (closeBtn) {
+        closeBtn.disabled = false;
+        closeBtn.textContent = '⏹ Đóng Chrome gian này';
+      }
+      toast('Không đóng được Chrome: ' + ((r && r.error) || 'lỗi không rõ'));
+    }
+  } catch (err) {
+    if (closeBtn) {
+      closeBtn.disabled = false;
+      closeBtn.textContent = '⏹ Đóng Chrome gian này';
+    }
+    toast('Lỗi khi đóng Chrome: ' + err.message);
+  } finally {
+    closingShopIds.delete(s.id);
   }
 }
 
@@ -1480,9 +1471,6 @@ $('openSelectedBtn').onclick = async () => {
       openedCount++;
       updateCardsRunningStatus();
     }
-    if (i < list.length - 1) {
-      await new Promise((r) => setTimeout(r, 650));
-    }
   }
   const reportResult = await reportMyActiveShops();
   if (reportResult && !reportResult.ok && !reportResult.queued) {
@@ -1499,20 +1487,29 @@ $('closeAllBtn').onclick = async () => {
   if (!roleRunning.length) return;
   if (!confirm(`Đóng tất cả ${roleRunning.length} cửa sổ Chrome đang mở của tài khoản này?`)) return;
   if (isMemberMode()) {
-    for (const s of roleRunning) {
-      await window.api.closeShop(s.id);
-      runningIds.delete(s.id);
-    }
+    const results = await Promise.all(roleRunning.map((s) => window.api.closeShop(s.id)));
+    const closedIds = roleRunning
+      .filter((_shop, index) => results[index] && results[index].ok)
+      .map((shop) => shop.id);
+    closedIds.forEach((id) => runningIds.delete(id));
     updateCardsRunningStatus();
-    await reportMyActiveShops();
-    toast(`Đã đóng ${roleRunning.length} cửa sổ Chrome của bạn!`);
+    reportMyActiveShops();
+    const failedCount = roleRunning.length - closedIds.length;
+    toast(failedCount
+      ? `Đã đóng ${closedIds.length}/${roleRunning.length} Chrome. Một số cửa sổ chưa đóng được.`
+      : `Đã đóng ${closedIds.length} cửa sổ Chrome của bạn!`);
   } else {
     const r = await window.api.closeAllShops();
-    if (r && r.ok) {
-      runningIds.clear();
+    if (r) {
+      const closedIds = Array.isArray(r.closedIds)
+        ? r.closedIds
+        : roleRunning.slice(0, r.closedCount || 0).map((shop) => shop.id);
+      closedIds.forEach((id) => runningIds.delete(id));
       updateCardsRunningStatus();
-      await reportMyActiveShops();
-      toast(`Đã đóng toàn bộ ${r.closedCount || roleRunning.length} cửa sổ Chrome!`);
+      reportMyActiveShops();
+      toast(r.ok
+        ? `Đã đóng toàn bộ ${r.closedCount} cửa sổ Chrome!`
+        : `Đã đóng ${r.closedCount}/${roleRunning.length} Chrome. ${r.error || 'Một số cửa sổ chưa đóng được.'}`);
     }
   }
 };
@@ -1874,15 +1871,16 @@ function renderMembersListModal() {
         $('membersDlg').close();
         const openMode = getOpenActionForMode(pMode);
         toast(`Đang mở ${mShops.length} gian của ${m.name} (${getPermModeLabel(pMode)})...`);
+        let openedCount = 0;
         for (let i = 0; i < mShops.length; i++) {
-          await window.api.openShop(mShops[i].id, openMode);
-          runningIds.add(mShops[i].id);
-          render();
-          if (i < mShops.length - 1) {
-            await new Promise((r) => setTimeout(r, 650));
+          const result = await window.api.openShop(mShops[i].id, openMode);
+          if (result && result.ok) {
+            runningIds.add(mShops[i].id);
+            openedCount++;
+            render();
           }
         }
-        toast(`Đã mở xong ${mShops.length} gian của ${m.name}!`);
+        toast(`Đã mở xong ${openedCount}/${mShops.length} gian của ${m.name}!`);
       },
       'Mở đồng loạt tất cả các gian của thành viên này'
     );
@@ -2187,7 +2185,9 @@ $('pickBrowserBtn').onclick = async () => {
     syncFromCloud(false, true);
   }, 15000);
   // Dong bo trang thai mo/dong gian hang Online moi 4 giay (muot ma, tuc thi)
-  setInterval(refreshOnlineActiveShops, 4000);
+  setInterval(() => {
+    if (currentUser && !isMemberMode()) refreshOnlineActiveShops();
+  }, 4000);
   // Heartbeat dinh ky moi 7 giay de lien tuc lam moi trang thai Online & dong bo gian hang dang mo len Cloud
   setInterval(async () => {
     if (!currentUser) return;
