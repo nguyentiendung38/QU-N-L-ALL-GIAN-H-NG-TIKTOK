@@ -905,6 +905,18 @@ function isProcessAlive(pid) {
   }
 }
 
+function isProfileLocked(profileDir) {
+  const lock = path.join(profileDir, 'lockfile');
+  if (!fs.existsSync(lock)) return false;
+  try {
+    const fd = fs.openSync(lock, 'r+');
+    fs.closeSync(fd);
+    return false;
+  } catch (e) {
+    return e.code === 'EBUSY' || e.code === 'EPERM';
+  }
+}
+
 function stopProxyForwarder(shopId) {
   const srv = proxyForwarders.get(shopId);
   if (srv) {
@@ -928,8 +940,10 @@ function syncRunningShops() {
         if (saved > 0) pid = saved;
       } catch {}
     }
-    if (pid && isProcessAlive(pid)) {
-      runningShops.set(s.id, pid);
+    // Kiem tra ca theo PID va theo lockfile cua Chrome tren Windows
+    const alive = (pid && isProcessAlive(pid)) || isProfileLocked(dir);
+    if (alive) {
+      if (!runningShops.has(s.id) && pid) runningShops.set(s.id, pid);
       activeIds.push(s.id);
     } else {
       if (runningShops.has(s.id)) runningShops.delete(s.id);
@@ -1738,12 +1752,18 @@ ipcMain.handle('shop:open', async (_e, id, which, overrideUrl) => {
       }
 
       child.once('exit', () => {
-        runningShops.delete(id);
-        stopProxyForwarder(id);
-        try {
-          fs.unlinkSync(pidFile);
-        } catch {}
-        notifyRunningChanged(true);
+        // Cho 1.2s de xac nhan Chrome co thuc su dong hay chi la tien trinh launcher ban dau thoat
+        setTimeout(() => {
+          if (isProfileLocked(dir)) {
+            return;
+          }
+          runningShops.delete(id);
+          stopProxyForwarder(id);
+          try {
+            fs.unlinkSync(pidFile);
+          } catch {}
+          notifyRunningChanged(true);
+        }, 1200);
       });
 
       child.unref();

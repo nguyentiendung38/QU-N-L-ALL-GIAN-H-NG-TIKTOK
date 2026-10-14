@@ -92,9 +92,15 @@ function getMyUserName() {
 }
 
 let isReportingActive = false;
+let needReportAgain = false;
 async function reportMyActiveShops() {
-  if (!currentUser || isReportingActive) return;
+  if (!currentUser) return;
+  if (isReportingActive) {
+    needReportAgain = true;
+    return;
+  }
   isReportingActive = true;
+  needReportAgain = false;
   try {
     const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
     const userName = currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName();
@@ -105,6 +111,10 @@ async function reportMyActiveShops() {
     console.warn('reportMyActiveShops error:', err);
   } finally {
     isReportingActive = false;
+    if (needReportAgain) {
+      needReportAgain = false;
+      setTimeout(reportMyActiveShops, 200);
+    }
   }
 }
 

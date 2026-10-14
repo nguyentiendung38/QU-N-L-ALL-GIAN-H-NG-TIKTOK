@@ -1,8 +1,8 @@
 {
-  "version": "2.1.16",
-  "buildNumber": 225,
+  "version": "2.1.17",
+  "buildNumber": 226,
   "updatedAt": "2026-10-14",
-  "notes": "Chong lag, giu cache trang thai online on dinh khong bi chop tat",
+  "notes": "Fix nhan dien tien trinh Chrome bang lockfile tren Windows va chong bo sot luot bao cao",
   "files": [
     "index.html",
     "renderer.js",
