@@ -1,8 +1,8 @@
 {
-  "version": "2.1.45",
-  "buildNumber": 254,
+  "version": "2.1.46",
+  "buildNumber": 255,
   "updatedAt": "2026-10-14",
-  "notes": "Khắc phục đồng bộ hoạt động nhân viên và giám sát shop đang mở",
+  "notes": "fix update1 npm run release -- Nội dung cập nhật",
   "files": [
     "main.js",
     "main-core.js",
