@@ -1,8 +1,8 @@
 {
-  "version": "2.1.43",
-  "buildNumber": 252,
+  "version": "2.1.44",
+  "buildNumber": 253,
   "updatedAt": "2026-10-14",
-  "notes": "fix update hệ thống",
+  "notes": "fix update1",
   "files": [
     "main.js",
     "main-core.js",

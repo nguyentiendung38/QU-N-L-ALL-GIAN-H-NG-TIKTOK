@@ -158,53 +158,65 @@ function getMyUserName() {
   return (authConfig && authConfig.adminUser) || 'Admin';
 }
 
-let activeReportQueue = Promise.resolve();
+let isReportingActive = false;
+let needReportAgain = false;
 let lastActiveReportWarningAt = 0;
-function reportMyActiveShops() {
-  const reportTask = activeReportQueue.then(async () => {
-    if (!currentUser) return { ok: false, error: 'Chưa đăng nhập' };
-    let result = { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
-    try {
-      const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
-      const userName = currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName();
-      const role = (isMemberMode() && currentUser.member) ? (currentUser.member.permMode || 'cskh') : 'admin';
-      const shopIds = Array.from(runningIds);
-      result = await window.api.cloudReportActive({
-        userKey,
-        userName,
-        role,
-        shopIds,
-        latestActivity: shopActivityLog.find((event) => event.synced) || null,
-        proxyIssues: getVisibleShopsForRole()
-          .filter((shop) => proxyStatusMap.get(shop.id)?.state === 'die')
-          .map((shop) => shop.id),
-        activityPending: shopActivityLog.filter((event) => !event.synced).length
-      });
-      if (result && result.ok) {
-        activeCloudOk = true;
-        activeCloudError = '';
-      }
-      if (!result || !result.ok) {
-        activeCloudOk = false;
-        activeCloudError = (result && result.error) || 'Không nhận được phản hồi từ Cloud';
-        const now = Date.now();
-        if (now - lastActiveReportWarningAt >= 30000) {
-          console.warn('Không đồng bộ được trạng thái shop lên Cloud:', (result && result.error) || 'Lỗi không xác định');
-          lastActiveReportWarningAt = now;
-        }
-        result = result || { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
-      }
-    } catch (err) {
-      activeCloudOk = false;
-      activeCloudError = err.message;
-      console.warn('reportMyActiveShops error:', err);
-      result = { ok: false, error: err.message };
+async function reportMyActiveShops() {
+  if (!currentUser) return { ok: false, error: 'Chưa đăng nhập' };
+  if (isReportingActive) {
+    needReportAgain = true;
+    return { ok: false, queued: true };
+  }
+  isReportingActive = true;
+  needReportAgain = false;
+  let result = { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
+  try {
+    const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
+    const userName = currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName();
+    const role = (isMemberMode() && currentUser.member) ? (currentUser.member.permMode || 'cskh') : 'admin';
+    const shopIds = Array.from(runningIds);
+    result = await window.api.cloudReportActive({
+      userKey,
+      userName,
+      role,
+      shopIds,
+      latestActivity: shopActivityLog.find((event) => event.synced) || null,
+      proxyIssues: getVisibleShopsForRole()
+        .filter((shop) => proxyStatusMap.get(shop.id)?.state === 'die')
+        .map((shop) => shop.id),
+      activityPending: shopActivityLog.filter((event) => !event.synced).length
+    });
+    if (result && result.ok) {
+      activeCloudOk = true;
+      activeCloudError = '';
     }
-    renderAdminDashboard();
-    return result;
-  });
-  activeReportQueue = reportTask.then(() => undefined, () => undefined);
-  return reportTask;
+    if (!result || !result.ok) {
+      if (result && result.queued) {
+        return result;
+      }
+      activeCloudOk = false;
+      activeCloudError = (result && result.error) || 'Không nhận được phản hồi từ Cloud';
+      const now = Date.now();
+      if (now - lastActiveReportWarningAt >= 30000) {
+        console.warn('Không đồng bộ được trạng thái shop lên Cloud:', (result && result.error) || 'Lỗi không xác định');
+        lastActiveReportWarningAt = now;
+      }
+      result = result || { ok: false, error: 'Không nhận được phản hồi từ Cloud' };
+    }
+  } catch (err) {
+    activeCloudOk = false;
+    activeCloudError = err.message;
+    console.warn('reportMyActiveShops error:', err);
+    result = { ok: false, error: err.message };
+  } finally {
+    isReportingActive = false;
+    if (needReportAgain) {
+      needReportAgain = false;
+      setTimeout(reportMyActiveShops, 200);
+    }
+  }
+  renderAdminDashboard();
+  return result;
 }
 
 let isRefreshingActive = false;
