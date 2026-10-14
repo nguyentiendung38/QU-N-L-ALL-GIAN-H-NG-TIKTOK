@@ -1,8 +1,8 @@
 {
-  "version": "2.1.34",
-  "buildNumber": 243,
+  "version": "2.1.35",
+  "buildNumber": 244,
   "updatedAt": "2026-10-14",
-  "notes": "fix lỗi",
+  "notes": "fix update khi mở lại app",
   "files": [
     "main.js",
     "main-core.js",

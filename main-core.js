@@ -330,10 +330,10 @@ const liveAppDir = () => path.join(app.getPath('userData'), 'live_app');
 function getActiveAppPath() {
   const liveDir = liveAppDir();
   const liveVerFile = path.join(liveDir, 'version.json');
-  const liveIndex = path.join(liveDir, 'index.html');
+  const requiredLiveFiles = ['index.html', 'renderer.js', 'preload.js', 'main-core.js', 'version.json'];
   const bundledVerFile = path.join(__dirname, 'version.json');
 
-  if (fs.existsSync(liveIndex) && fs.existsSync(liveVerFile)) {
+  if (requiredLiveFiles.every((file) => fs.existsSync(path.join(liveDir, file)))) {
     try {
       const liveVer = readJson(liveVerFile, {});
       const bundledVer = readJson(bundledVerFile, {});
@@ -512,11 +512,6 @@ ipcMain.handle('ota:apply', async () => {
       if (fs.existsSync(logoSrc)) fs.copyFileSync(logoSrc, path.join(targetDir, 'logo.png'));
       if (fs.existsSync(iconSrc)) fs.copyFileSync(iconSrc, path.join(targetDir, 'icon.png'));
     } catch {}
-
-    // Tai lai giao dien cua so voi phien ban moi vua cap nhat
-    if (win && !win.isDestroyed()) {
-      win.loadFile(path.join(targetDir, 'index.html'));
-    }
 
     return { ok: true, version: appliedVersion, notes: appliedNotes };
   } catch (e) {

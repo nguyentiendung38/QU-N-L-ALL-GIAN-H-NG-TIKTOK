@@ -7,6 +7,7 @@ const liveCore = path.join(liveDir, 'main-core.js');
 const liveVersionFile = path.join(liveDir, 'version.json');
 const bundledCore = path.join(__dirname, 'main-core.js');
 const bundledVersionFile = path.join(__dirname, 'version.json');
+const liveAppFiles = ['index.html', 'renderer.js', 'preload.js', 'main-core.js', 'version.json'];
 
 function readBuildNumber(file) {
   try {
@@ -17,8 +18,8 @@ function readBuildNumber(file) {
 }
 
 const useLiveCore =
-  fs.existsSync(liveCore) &&
-  readBuildNumber(liveVersionFile) > readBuildNumber(bundledVersionFile);
+  liveAppFiles.every((file) => fs.existsSync(path.join(liveDir, file))) &&
+  readBuildNumber(liveVersionFile) >= readBuildNumber(bundledVersionFile);
 
 try {
   require(useLiveCore ? liveCore : bundledCore);
