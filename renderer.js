@@ -785,6 +785,7 @@ function renderAdminDashboard() {
         <div class="admin-dashboard-subtitle">Cập nhật theo trạng thái shop, nhân viên và Proxy</div>
       </div>
       <div class="admin-dashboard-header-actions">
+        <button type="button" class="btn small" id="adminDashboardReloadStaffBtn">↻ Tải lại dữ liệu nhân viên</button>
         ${cloudStatus}
         <button type="button" class="btn small" id="adminDashboardToggleBtn"
           aria-expanded="${!isAdminDashboardCollapsed}"
@@ -832,6 +833,7 @@ function renderAdminDashboard() {
       <section class="dashboard-panel">
         <div class="dashboard-panel-header">
           <h3>🕘 Hoạt động gần đây (${activity.length})</h3>
+          <button type="button" class="btn small" id="dashboardExportActivityBtn">⬇ Xuất CSV</button>
           <button type="button" class="btn small" id="dashboardRefreshActivityBtn">↻ Làm mới</button>
         </div>
         ${activityRows
@@ -857,6 +859,34 @@ function renderAdminDashboard() {
       renderAdminDashboard();
     };
   }
+  const reloadStaffBtn = $('adminDashboardReloadStaffBtn');
+  if (reloadStaffBtn) {
+    reloadStaffBtn.onclick = async () => {
+      reloadStaffBtn.disabled = true;
+      reloadStaffBtn.textContent = '⏳ Đang tải...';
+      try {
+        const cloudSynced = await syncFromCloud(true, true);
+        await refreshActivityHistory(true);
+        renderAdminDashboard();
+
+        const errors = [
+          !cloudSynced ? activeCloudError : '',
+          activeStatusFetchError,
+          activitySyncError
+        ].filter(Boolean);
+        if (errors.length) {
+          toast(`Đã tải lại một phần dữ liệu. Cần kiểm tra Cloud: ${errors[0]}`);
+        } else {
+          toast('Đã tải lại dữ liệu nhân viên và hoạt động mới nhất.');
+        }
+      } catch (error) {
+        toast(`Không tải lại được dữ liệu nhân viên: ${error.message}`);
+      } finally {
+        reloadStaffBtn.disabled = false;
+        reloadStaffBtn.textContent = '↻ Tải lại dữ liệu nhân viên';
+      }
+    };
+  }
   const checkProxyBtn = $('dashboardCheckProxyBtn');
   if (checkProxyBtn) {
     checkProxyBtn.onclick = () => {
@@ -867,6 +897,41 @@ function renderAdminDashboard() {
   const refreshActivityBtn = $('dashboardRefreshActivityBtn');
   if (refreshActivityBtn) {
     refreshActivityBtn.onclick = () => refreshActivityHistory(true);
+  }
+  const exportActivityBtn = $('dashboardExportActivityBtn');
+  if (exportActivityBtn) {
+    exportActivityBtn.onclick = async () => {
+      exportActivityBtn.disabled = true;
+      try {
+        await refreshActivityHistory(true);
+        const exportEvents = [...sharedActivityLog];
+        const knownIds = new Set(exportEvents.map((event) => event.id));
+        shopActivityLog.forEach((event) => {
+          if (event && !knownIds.has(event.id)) {
+            exportEvents.push(event);
+            knownIds.add(event.id);
+          }
+        });
+        const staffEvents = exportEvents
+          .filter((event) => event.userKey && event.userKey !== 'admin')
+          .sort((a, b) => Number(b.time) - Number(a.time));
+
+        const result = await window.api.exportActivity(staffEvents);
+        if (result && result.ok) {
+          if (activitySyncError) {
+            toast(`Đã xuất ${result.count} hoạt động có sẵn; một số dữ liệu có thể chưa đồng bộ từ Cloud.`);
+          } else {
+            toast(`Đã xuất ${result.count} hoạt động ra file CSV.`);
+          }
+        } else if (result && !result.canceled) {
+          toast(`Lỗi xuất hoạt động: ${result.error || 'không rõ'}`);
+        }
+      } catch (error) {
+        toast(`Lỗi xuất hoạt động: ${error.message}`);
+      } finally {
+        exportActivityBtn.disabled = false;
+      }
+    };
   }
   const repairActivityIndexBtn = $('dashboardRepairActivityIndexBtn');
   if (repairActivityIndexBtn) {

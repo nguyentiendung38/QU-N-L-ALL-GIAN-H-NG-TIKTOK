@@ -1246,6 +1246,49 @@ ipcMain.handle('cloud:getActivity', async () => {
   }
 });
 
+ipcMain.handle('activity:export', async (_event, events) => {
+  if (!Array.isArray(events)) {
+    return { ok: false, error: 'Danh sách hoạt động cần xuất không hợp lệ.' };
+  }
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const result = await dialog.showSaveDialog({
+    title: 'Xuất hoạt động gần đây của nhân viên',
+    defaultPath: `hoat-dong-nhan-vien-${dateStr}.csv`,
+    filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+  });
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+
+  const columns = [
+    ['Thời gian', (item) => {
+      const time = Number(item.time);
+      return time ? new Date(time).toLocaleString('vi-VN') : '';
+    }],
+    ['Tài khoản', (item) => item.userName || ''],
+    ['Mã tài khoản', (item) => item.userKey || ''],
+    ['Hoạt động', (item) => ({
+      open: 'Mở shop',
+      close: 'Đóng shop',
+      login: 'Đăng nhập',
+      logout: 'Đăng xuất'
+    }[item.action] || item.action || '')],
+    ['Gian hàng', (item) => item.shopName || ''],
+    ['Mã gian hàng', (item) => item.shopId || '']
+  ];
+  const escapeCsv = (value) => `"${String(value == null ? '' : value).replace(/"/g, '""')}"`;
+  const rows = [
+    columns.map(([label]) => escapeCsv(label)).join(','),
+    ...events.map((event) => columns.map(([, getValue]) => escapeCsv(getValue(event || {}))).join(','))
+  ];
+
+  try {
+    fs.writeFileSync(result.filePath, `\uFEFF${rows.join('\r\n')}`, 'utf8');
+    return { ok: true, count: events.length, filePath: result.filePath };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
 // Xuat danh sach gian hang + tai khoan cua 1 thanh vien ra file JSON de gui cho nhan vien do
 ipcMain.handle('shops:exportMember', async (_e, payload) => {
   const member = payload && payload.member ? payload.member : null;

@@ -1,8 +1,8 @@
 {
-  "version": "2.1.54",
-  "buildNumber": 263,
+  "version": "2.1.55",
+  "buildNumber": 264,
   "updatedAt": "2026-10-15",
-  "notes": "fix bugs2",
+  "notes": "update tai dl and reset",
   "files": [
     "main.js",
     "main-core.js",
