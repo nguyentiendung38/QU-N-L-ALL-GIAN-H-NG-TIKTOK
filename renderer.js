@@ -817,6 +817,9 @@ function renderAdminDashboard() {
       <section class="dashboard-panel">
         <div class="dashboard-panel-header">
           <h3>🔔 Cảnh báo</h3>
+          ${activitySyncError.includes('Chỉ mục hoạt động của admin trên Cloud không hợp lệ')
+            ? '<button type="button" class="btn small" id="dashboardRepairActivityIndexBtn">🛠 Sửa chỉ mục hoạt động</button>'
+            : ''}
           <button type="button" class="btn small" id="dashboardCheckProxyBtn">🌐 Kiểm tra Proxy</button>
         </div>
         ${alerts.length
@@ -861,6 +864,35 @@ function renderAdminDashboard() {
   const refreshActivityBtn = $('dashboardRefreshActivityBtn');
   if (refreshActivityBtn) {
     refreshActivityBtn.onclick = () => refreshActivityHistory(true);
+  }
+  const repairActivityIndexBtn = $('dashboardRepairActivityIndexBtn');
+  if (repairActivityIndexBtn) {
+    repairActivityIndexBtn.onclick = async () => {
+      const confirmed = confirm(
+        'Chỉ mục hoạt động Admin trên Cloud bị lỗi. Sửa chỉ mục sẽ bắt đầu danh sách hoạt động mới; các sự kiện cũ trên Cloud không bị xóa nhưng có thể không còn xuất hiện trong Hoạt động gần đây. Bạn có muốn tiếp tục không?'
+      );
+      if (!confirmed) return;
+
+      repairActivityIndexBtn.disabled = true;
+      try {
+        const result = await window.api.cloudRepairAdminActivityIndex();
+        if (!result || !result.ok) {
+          toast(`Không sửa được chỉ mục hoạt động: ${(result && result.error) || 'Lỗi không xác định'}`);
+          repairActivityIndexBtn.disabled = false;
+          return;
+        }
+        activitySyncError = '';
+        if (result.repaired) {
+          toast('Đã sửa chỉ mục hoạt động Admin. Lịch sử mới sẽ tiếp tục được đồng bộ.');
+        } else {
+          toast('Chỉ mục hoạt động Admin chưa tồn tại; đang làm mới dữ liệu.');
+        }
+        await refreshActivityHistory(true);
+      } catch (error) {
+        toast(`Không sửa được chỉ mục hoạt động: ${error.message}`);
+        repairActivityIndexBtn.disabled = false;
+      }
+    };
   }
 }
 

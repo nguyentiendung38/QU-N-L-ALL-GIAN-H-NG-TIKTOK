@@ -1,8 +1,8 @@
 {
-  "version": "2.1.52",
-  "buildNumber": 261,
-  "updatedAt": "2026-10-14",
-  "notes": "fix tab shoppe2",
+  "version": "2.1.53",
+  "buildNumber": 262,
+  "updatedAt": "2026-10-15",
+  "notes": "fix bugs",
   "files": [
     "main.js",
     "main-core.js",

@@ -970,6 +970,17 @@ function activityCloudUrl(cloudKey, key, value, compressed = false) {
   return `${baseUrl}/${encoded}`;
 }
 
+class InvalidCloudActivityIndexError extends Error {}
+
+function isCloudActivityIndex(value) {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    (Array.isArray(value.ids) || Array.isArray(value.events))
+  );
+}
+
 async function saveCloudActivityEvent(cloudKey, userKey, event) {
   const eventKey = `event_${userKey}_${event.id}`;
   const compactEvent = {
@@ -986,20 +997,26 @@ async function saveCloudActivityEvent(cloudKey, userKey, event) {
 
 async function readCloudActivityIndex(cloudKey, userKey, stored) {
   const chunkCount = Math.max(0, Math.min(1000, parseInt(stored && stored.indexChunks, 10) || 0));
-  if (!chunkCount) return stored;
+  if (!chunkCount) {
+    if (stored == null || isCloudActivityIndex(stored)) return stored;
+    throw new InvalidCloudActivityIndexError(`Chỉ mục hoạt động của ${userKey} trên Cloud không hợp lệ`);
+  }
 
   const chunks = [];
   for (let index = 0; index < chunkCount; index++) {
     const url = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/historychunks_${encodeURIComponent(userKey)}_${index}`;
     const response = await httpsReq(url, 'GET');
+    if (response.status === 404) {
+      throw new InvalidCloudActivityIndexError(`Chỉ mục hoạt động của ${userKey} trên Cloud không hợp lệ`);
+    }
     if (response.status !== 200) {
       throw new Error(cloudResponseError(response, `Không đọc được chỉ mục hoạt động của ${userKey}`));
     }
     chunks.push(decodeCloudString(response.body));
   }
   const expanded = parseCloudJsonValue(chunks.join(''));
-  if (!expanded || typeof expanded !== 'object') {
-    throw new Error(`Chỉ mục hoạt động của ${userKey} trên Cloud không hợp lệ`);
+  if (!isCloudActivityIndex(expanded)) {
+    throw new InvalidCloudActivityIndexError(`Chỉ mục hoạt động của ${userKey} trên Cloud không hợp lệ`);
   }
   return expanded;
 }
@@ -1058,6 +1075,9 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
     }
 
     const storedValue = current.status === 200 ? parseCloudJsonValue(current.body) : null;
+    if (current.status === 200 && current.body.trim() && !storedValue) {
+      throw new InvalidCloudActivityIndexError(`Chỉ mục hoạt động của ${userKey} trên Cloud không hợp lệ`);
+    }
     const stored = await readCloudActivityIndex(cloudKey, userKey, storedValue);
     const events = Array.isArray(stored && stored.events) ? stored.events : [];
     const eventId = String(event.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
@@ -1103,6 +1123,42 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
   }
 });
 
+ipcMain.handle('cloud:repairAdminActivityIndex', async () => {
+  try {
+    const settings = readJson(settingsFile(), {});
+    const cloudKey = (settings.cloudKey || DEFAULT_CLOUD_KEY).trim();
+    const valueKey = 'history_admin';
+    const url = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/${encodeURIComponent(valueKey)}`;
+    const response = await httpsReq(url, 'GET');
+    if (response.status === 404 || (response.status === 200 && !response.body.trim())) {
+      return { ok: true, repaired: false };
+    }
+    if (response.status !== 200) {
+      return { ok: false, error: cloudResponseError(response, 'Không thể kiểm tra chỉ mục hoạt động của Admin') };
+    }
+
+    const stored = parseCloudJsonValue(response.body);
+    let invalid = stored == null;
+    if (!invalid) {
+      try {
+        const expanded = await readCloudActivityIndex(cloudKey, 'admin', stored);
+        invalid = !isCloudActivityIndex(expanded);
+      } catch (error) {
+        if (!(error instanceof InvalidCloudActivityIndexError)) throw error;
+        invalid = true;
+      }
+    }
+    if (!invalid) {
+      return { ok: false, error: 'Chỉ mục hoạt động của Admin hiện đọc được, không cần sửa.' };
+    }
+
+    const saved = await saveCloudActivityIndex(cloudKey, 'admin', []);
+    return saved.ok ? { ok: true, repaired: true } : saved;
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
 ipcMain.handle('cloud:getActivity', async () => {
   try {
     const settings = readJson(settingsFile(), {});
@@ -1126,6 +1182,9 @@ ipcMain.handle('cloud:getActivity', async () => {
         return { events: [], error: response.error || `HTTP ${response.status}` };
       }
       const storedValue = parseCloudJsonValue(response.body);
+      if (!storedValue && response.body.trim()) {
+        throw new InvalidCloudActivityIndexError(`Chỉ mục hoạt động của ${userKey} trên Cloud không hợp lệ`);
+      }
       const stored = await readCloudActivityIndex(cloudKey, userKey, storedValue);
       if (Array.isArray(stored && stored.events)) {
         return { events: stored.events, error: null };
