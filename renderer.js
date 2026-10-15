@@ -732,6 +732,9 @@ function renderAdminDashboard() {
   const alerts = [];
   if (activeStatusFetchError) alerts.push(`Không tải được trạng thái nhân viên: ${activeStatusFetchError}`);
   if (activitySyncError) alerts.push(`Không đồng bộ được hoạt động gần đây: ${activitySyncError}`);
+  const invalidActivityIndexMatch = activitySyncError.match(
+    /Chỉ mục hoạt động của ([a-zA-Z0-9_-]+) trên Cloud không hợp lệ/
+  );
   failedProxyShops.forEach((shop) => {
     const error = proxyStatusMap.get(shop.id)?.error || 'Proxy không kết nối được';
     alerts.push(`Proxy lỗi — ${shop.name}: ${error}`);
@@ -817,8 +820,8 @@ function renderAdminDashboard() {
       <section class="dashboard-panel">
         <div class="dashboard-panel-header">
           <h3>🔔 Cảnh báo</h3>
-          ${activitySyncError.includes('Chỉ mục hoạt động của admin trên Cloud không hợp lệ')
-            ? '<button type="button" class="btn small" id="dashboardRepairActivityIndexBtn">🛠 Sửa chỉ mục hoạt động</button>'
+          ${invalidActivityIndexMatch
+            ? `<button type="button" class="btn small" id="dashboardRepairActivityIndexBtn">🛠 Sửa chỉ mục ${escapeHtml(invalidActivityIndexMatch[1])}</button>`
             : ''}
           <button type="button" class="btn small" id="dashboardCheckProxyBtn">🌐 Kiểm tra Proxy</button>
         </div>
@@ -868,14 +871,21 @@ function renderAdminDashboard() {
   const repairActivityIndexBtn = $('dashboardRepairActivityIndexBtn');
   if (repairActivityIndexBtn) {
     repairActivityIndexBtn.onclick = async () => {
+      const userKey = invalidActivityIndexMatch[1];
+      const member = members.find(
+        (item) => String(item.id).trim().replace(/[^a-zA-Z0-9_-]/g, '_') === userKey
+      );
+      const userLabel = userKey === 'admin'
+        ? 'Admin'
+        : (member ? `nhân viên ${member.name}` : `tài khoản ${userKey}`);
       const confirmed = confirm(
-        'Chỉ mục hoạt động Admin trên Cloud bị lỗi. Sửa chỉ mục sẽ bắt đầu danh sách hoạt động mới; các sự kiện cũ trên Cloud không bị xóa nhưng có thể không còn xuất hiện trong Hoạt động gần đây. Bạn có muốn tiếp tục không?'
+        `Chỉ mục hoạt động của ${userLabel} trên Cloud bị lỗi. Sửa chỉ mục sẽ bắt đầu danh sách hoạt động mới; các sự kiện cũ trên Cloud không bị xóa nhưng có thể không còn xuất hiện trong Hoạt động gần đây. Bạn có muốn tiếp tục không?`
       );
       if (!confirmed) return;
 
       repairActivityIndexBtn.disabled = true;
       try {
-        const result = await window.api.cloudRepairAdminActivityIndex();
+        const result = await window.api.cloudRepairActivityIndex(userKey);
         if (!result || !result.ok) {
           toast(`Không sửa được chỉ mục hoạt động: ${(result && result.error) || 'Lỗi không xác định'}`);
           repairActivityIndexBtn.disabled = false;
@@ -883,9 +893,9 @@ function renderAdminDashboard() {
         }
         activitySyncError = '';
         if (result.repaired) {
-          toast('Đã sửa chỉ mục hoạt động Admin. Lịch sử mới sẽ tiếp tục được đồng bộ.');
+          toast(`Đã sửa chỉ mục hoạt động của ${userLabel}. Lịch sử mới sẽ tiếp tục được đồng bộ.`);
         } else {
-          toast('Chỉ mục hoạt động Admin chưa tồn tại; đang làm mới dữ liệu.');
+          toast(`Chỉ mục hoạt động của ${userLabel} chưa tồn tại; đang làm mới dữ liệu.`);
         }
         await refreshActivityHistory(true);
       } catch (error) {

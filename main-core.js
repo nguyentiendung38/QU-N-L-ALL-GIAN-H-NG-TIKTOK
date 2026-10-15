@@ -1123,25 +1123,34 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
   }
 });
 
-ipcMain.handle('cloud:repairAdminActivityIndex', async () => {
+ipcMain.handle('cloud:repairActivityIndex', async (_event, requestedUserKey) => {
   try {
+    const userKey = String(requestedUserKey || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+    const validUserKeys = new Set([
+      'admin',
+      ...readMembers().map((member) => String(member.id).trim().replace(/[^a-zA-Z0-9_-]/g, '_'))
+    ]);
+    if (!validUserKeys.has(userKey)) {
+      return { ok: false, error: 'Không tìm thấy tài khoản cần sửa chỉ mục hoạt động.' };
+    }
+
     const settings = readJson(settingsFile(), {});
     const cloudKey = (settings.cloudKey || DEFAULT_CLOUD_KEY).trim();
-    const valueKey = 'history_admin';
+    const valueKey = `history_${userKey}`;
     const url = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/${encodeURIComponent(valueKey)}`;
     const response = await httpsReq(url, 'GET');
     if (response.status === 404 || (response.status === 200 && !response.body.trim())) {
       return { ok: true, repaired: false };
     }
     if (response.status !== 200) {
-      return { ok: false, error: cloudResponseError(response, 'Không thể kiểm tra chỉ mục hoạt động của Admin') };
+      return { ok: false, error: cloudResponseError(response, `Không thể kiểm tra chỉ mục hoạt động của ${userKey}`) };
     }
 
     const stored = parseCloudJsonValue(response.body);
     let invalid = stored == null;
     if (!invalid) {
       try {
-        const expanded = await readCloudActivityIndex(cloudKey, 'admin', stored);
+        const expanded = await readCloudActivityIndex(cloudKey, userKey, stored);
         invalid = !isCloudActivityIndex(expanded);
       } catch (error) {
         if (!(error instanceof InvalidCloudActivityIndexError)) throw error;
@@ -1149,10 +1158,10 @@ ipcMain.handle('cloud:repairAdminActivityIndex', async () => {
       }
     }
     if (!invalid) {
-      return { ok: false, error: 'Chỉ mục hoạt động của Admin hiện đọc được, không cần sửa.' };
+      return { ok: false, error: `Chỉ mục hoạt động của ${userKey} hiện đọc được, không cần sửa.` };
     }
 
-    const saved = await saveCloudActivityIndex(cloudKey, 'admin', []);
+    const saved = await saveCloudActivityIndex(cloudKey, userKey, []);
     return saved.ok ? { ok: true, repaired: true } : saved;
   } catch (error) {
     return { ok: false, error: error.message };
