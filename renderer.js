@@ -28,6 +28,7 @@ let isLoadingActivity = false;
 let activityWriteQueue = Promise.resolve();
 let activityFlushPromise = null;
 let lastActivitySyncWarningAt = 0;
+let isReloadingDashboardData = false;
 let activeCloudError = '';
 let activeStatusFetchError = '';
 let isDeptMonitorCollapsed = (function () {
@@ -223,15 +224,21 @@ async function reportMyActiveShops() {
   return result;
 }
 
-let isRefreshingActive = false;
+let activeRefreshPromise = null;
 let activeCloudOk = false;
-async function refreshOnlineActiveShops() {
-  if (isMemberMode()) return;
-  if (isRefreshingActive) return;
-  isRefreshingActive = true;
-  try {
-    const res = await window.api.cloudGetActive();
-    if (res && typeof res === 'object') {
+async function refreshOnlineActiveShops(force = false) {
+  if (isMemberMode()) return { ok: false, error: 'Chỉ Admin mới tải được trạng thái toàn bộ nhân viên.' };
+  if (activeRefreshPromise) {
+    if (!force) return activeRefreshPromise;
+    await activeRefreshPromise;
+  }
+
+  const refreshPromise = (async () => {
+    try {
+      const res = await window.api.cloudGetActive();
+      if (!res || typeof res !== 'object') {
+        throw new Error('Cloud không trả về dữ liệu trạng thái nhân viên hợp lệ.');
+      }
       if (res.error) {
         activeCloudOk = false;
         activeStatusFetchError = res.error;
@@ -258,14 +265,20 @@ async function refreshOnlineActiveShops() {
         renderDeptMonitor();
         renderAdminDashboard();
       }
+      return res.error ? { ok: false, error: res.error } : { ok: true };
+    } catch (err) {
+      activeCloudOk = false;
+      activeStatusFetchError = err.message;
+      console.warn('refreshOnlineActiveShops error:', err);
+      renderAdminDashboard();
+      return { ok: false, error: err.message };
     }
-  } catch (err) {
-    activeCloudOk = false;
-    activeStatusFetchError = err.message;
-    console.warn('refreshOnlineActiveShops error:', err);
-    renderAdminDashboard();
+  })();
+  activeRefreshPromise = refreshPromise;
+  try {
+    return await refreshPromise;
   } finally {
-    isRefreshingActive = false;
+    if (activeRefreshPromise === refreshPromise) activeRefreshPromise = null;
   }
 }
 
@@ -364,16 +377,23 @@ function formatActivityTime(timestamp) {
 }
 
 let lastActivityFetchAt = 0;
+let activityFetchPromise = null;
 async function refreshActivityHistory(force = false) {
-  if (isMemberMode() || isLoadingActivity) return;
+  if (isMemberMode()) return { ok: false, error: 'Chỉ Admin mới tải được hoạt động của nhân viên.' };
+  if (activityFetchPromise) {
+    if (!force) return activityFetchPromise;
+    await activityFetchPromise;
+  }
   if (!force && Date.now() - lastActivityFetchAt < 60000) return;
   isLoadingActivity = true;
   lastActivityFetchAt = Date.now();
-  try {
-    const result = await window.api.cloudGetActivity();
-    if (!result || !result.ok) {
-      activitySyncError = (result && result.error) || 'Không tải được lịch sử hoạt động từ Cloud';
-    } else {
+  const refreshPromise = (async () => {
+    try {
+      const result = await window.api.cloudGetActivity();
+      if (!result || !result.ok) {
+        activitySyncError = (result && result.error) || 'Không tải được lịch sử hoạt động từ Cloud';
+        return { ok: false, error: activitySyncError };
+      }
       const mergedEvents = [
         ...(Array.isArray(result.events) ? result.events : []),
         ...sharedActivityLog
@@ -386,13 +406,21 @@ async function refreshActivityHistory(force = false) {
         .sort((a, b) => Number(b.time) - Number(a.time))
         .slice(0, 100);
       activitySyncError = '';
+      return { ok: true };
+    } catch (err) {
+      activitySyncError = err.message;
+      console.warn('Không tải được lịch sử hoạt động:', err);
+      return { ok: false, error: err.message };
+    } finally {
+      isLoadingActivity = false;
+      renderAdminDashboard();
     }
-  } catch (err) {
-    activitySyncError = err.message;
-    console.warn('Không tải được lịch sử hoạt động:', err);
+  })();
+  activityFetchPromise = refreshPromise;
+  try {
+    return await refreshPromise;
   } finally {
-    isLoadingActivity = false;
-    renderAdminDashboard();
+    if (activityFetchPromise === refreshPromise) activityFetchPromise = null;
   }
 }
 
@@ -785,7 +813,10 @@ function renderAdminDashboard() {
         <div class="admin-dashboard-subtitle">Cập nhật theo trạng thái shop, nhân viên và Proxy</div>
       </div>
       <div class="admin-dashboard-header-actions">
-        <button type="button" class="btn small" id="adminDashboardReloadStaffBtn">↻ Tải lại dữ liệu nhân viên</button>
+        <button type="button" class="btn small" id="adminDashboardReloadStaffBtn"
+          ${isReloadingDashboardData ? 'disabled' : ''}>
+          ${isReloadingDashboardData ? '⏳ Đang tải toàn bộ...' : '↻ Tải lại toàn bộ'}
+        </button>
         ${cloudStatus}
         <button type="button" class="btn small" id="adminDashboardToggleBtn"
           aria-expanded="${!isAdminDashboardCollapsed}"
@@ -862,28 +893,33 @@ function renderAdminDashboard() {
   const reloadStaffBtn = $('adminDashboardReloadStaffBtn');
   if (reloadStaffBtn) {
     reloadStaffBtn.onclick = async () => {
-      reloadStaffBtn.disabled = true;
-      reloadStaffBtn.textContent = '⏳ Đang tải...';
+      if (isReloadingDashboardData) return;
+      isReloadingDashboardData = true;
+      renderAdminDashboard();
       try {
-        const cloudSynced = await syncFromCloud(true, true);
-        await refreshActivityHistory(true);
+        const cloudSynced = await syncFromCloud(true, true, false);
+        const [activeResult, activityResult] = await Promise.all([
+          refreshOnlineActiveShops(true),
+          refreshActivityHistory(true)
+        ]);
+        renderDeptMonitor();
         renderAdminDashboard();
 
         const errors = [
           !cloudSynced ? activeCloudError : '',
-          activeStatusFetchError,
-          activitySyncError
+          !activeResult.ok ? activeResult.error : '',
+          !activityResult.ok ? activityResult.error : ''
         ].filter(Boolean);
         if (errors.length) {
           toast(`Đã tải lại một phần dữ liệu. Cần kiểm tra Cloud: ${errors[0]}`);
         } else {
-          toast('Đã tải lại dữ liệu nhân viên và hoạt động mới nhất.');
+          toast('Đã tải lại toàn bộ dữ liệu, trạng thái giám sát và hoạt động nhân viên.');
         }
       } catch (error) {
-        toast(`Không tải lại được dữ liệu nhân viên: ${error.message}`);
+        toast(`Không tải lại được toàn bộ dữ liệu: ${error.message}`);
       } finally {
-        reloadStaffBtn.disabled = false;
-        reloadStaffBtn.textContent = '↻ Tải lại dữ liệu nhân viên';
+        isReloadingDashboardData = false;
+        renderAdminDashboard();
       }
     };
   }
@@ -1022,7 +1058,7 @@ function applyRoleUI() {
 
 }
 
-async function syncFromCloud(force = false, silent = true) {
+async function syncFromCloud(force = false, silent = true, refreshActive = true) {
   const statusEl = $('loginCloudStatus');
   const headerBtn = $('cloudSyncBtn');
   const headerTxt = $('cloudSyncText');
@@ -1060,7 +1096,7 @@ async function syncFromCloud(force = false, silent = true) {
     } else if (r.updated || !silent) {
       render();
     }
-    await refreshOnlineActiveShops();
+    if (refreshActive) await refreshOnlineActiveShops();
     renderAdminDashboard();
 
     if (!silent) {
