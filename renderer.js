@@ -226,6 +226,23 @@ async function reportMyActiveShops() {
 
 let activeRefreshPromise = null;
 let activeCloudOk = false;
+function getActiveUsersDisplaySignature(users) {
+  return JSON.stringify(Object.keys(users || {}).sort().map((key) => {
+    const user = users[key] || {};
+    const latestActivity = user.latestActivity || {};
+    return [
+      key,
+      Boolean(user.isOnline),
+      Boolean(user.isRunning),
+      Array.isArray(user.shops) ? user.shops.slice().sort().join(',') : '',
+      Array.isArray(user.proxyIssues) ? user.proxyIssues.slice().sort().join(',') : '',
+      user.who || '',
+      latestActivity.id || '',
+      latestActivity.time || ''
+    ];
+  }));
+}
+
 async function refreshOnlineActiveShops(force = false) {
   if (isMemberMode()) return { ok: false, error: 'Chỉ Admin mới tải được trạng thái toàn bộ nhân viên.' };
   if (activeRefreshPromise) {
@@ -235,6 +252,10 @@ async function refreshOnlineActiveShops(force = false) {
 
   const refreshPromise = (async () => {
     try {
+      const previousUsersSignature = getActiveUsersDisplaySignature(onlineActiveUsers);
+      const previousCloudOk = activeCloudOk;
+      const previousStatusError = activeStatusFetchError;
+      let hasNewActivity = false;
       const res = await window.api.cloudGetActive();
       if (!res || typeof res !== 'object') {
         throw new Error('Cloud không trả về dữ liệu trạng thái nhân viên hợp lệ.');
@@ -255,15 +276,19 @@ async function refreshOnlineActiveShops(force = false) {
         if (event && event.id && !knownEventIds.has(event.id)) {
           sharedActivityLog.push(event);
           knownEventIds.add(event.id);
+          hasNewActivity = true;
         }
       });
       sharedActivityLog = sharedActivityLog
         .sort((a, b) => Number(b.time) - Number(a.time))
         .slice(0, 100);
-      if (currentUser) {
-        updateCardsRunningStatus();
-        renderDeptMonitor();
-        renderAdminDashboard();
+      const displayDataChanged =
+        previousUsersSignature !== getActiveUsersDisplaySignature(onlineActiveUsers) ||
+        previousCloudOk !== activeCloudOk ||
+        previousStatusError !== activeStatusFetchError ||
+        hasNewActivity;
+      if (currentUser && displayDataChanged) {
+        refreshRunningStatusUI();
       }
       return res.error ? { ok: false, error: res.error } : { ok: true };
     } catch (err) {
@@ -425,32 +450,76 @@ async function refreshActivityHistory(force = false) {
 }
 
 function updateCardsRunningStatus() {
+  const shopsById = new Map(shops.map((shop) => [shop.id, shop]));
   const cards = document.querySelectorAll('.card[data-shop-id]');
   cards.forEach((card) => {
     const sid = card.dataset.shopId;
     if (!sid) return;
     const isLocalRunning = runningIds.has(sid);
-    const isRunning = isLocalRunning;
+    const shop = shopsById.get(sid);
+    if (!shop) return;
 
-    card.classList.toggle('is-running', isRunning);
+    card.classList.toggle('is-running', isLocalRunning);
 
     const pill = card.querySelector('.status-pill');
     if (pill) {
-      pill.className = 'status-pill ' + (isRunning ? 'running' : 'stopped');
-      let statusText = 'Đang đóng';
-      let statusTitle = 'Chưa mở cửa sổ Chrome';
-      if (isLocalRunning) {
-        statusText = 'Đang mở';
-        statusTitle = 'Đang mở Chrome trên máy này';
-      }
+      const statusClass = 'status-pill ' + (isLocalRunning ? 'running' : 'stopped');
+      const statusText = isLocalRunning ? 'Đang mở' : 'Đang đóng';
+      const statusTitle = isLocalRunning ? 'Đang mở Chrome trên máy này' : 'Chưa mở cửa sổ Chrome';
+      if (pill.className !== statusClass) pill.className = statusClass;
+      const statusTextEl = pill.querySelector('.status-txt');
+      if (statusTextEl && statusTextEl.textContent !== statusText) statusTextEl.textContent = statusText;
+      if (pill.title !== statusTitle) pill.title = statusTitle;
+    }
 
-      pill.innerHTML = `<span class="dot"></span><span class="status-txt">${statusText}</span>`;
-      pill.title = statusTitle;
+    const openButton = card.querySelector('.actions .btn.primary');
+    if (openButton) {
+      let label;
+      if (shop.platform === 'shopee') {
+        label = isLocalRunning ? '⚡ Đưa Shopee lên trước' : '🛒 Mở Shopee';
+      } else if (!isMemberMode()) {
+        label = isLocalRunning ? '⚡ Đưa cửa sổ lên trước' : '🚀 Mở TikTok Shop';
+      } else {
+        const shopMode = getShopPermMode(shop);
+        if (shopMode === 'accounting') {
+          label = isLocalRunning ? '⚡ Đưa TikTok lên trước' : '🔐 Mở TikTok để đăng nhập';
+        } else if (shopMode === 'vanhanh') {
+          label = isLocalRunning ? '⚡ Đưa cửa sổ lên trước (📦 Đơn hàng)' : '📦 Đơn hàng (To Ship)';
+        } else if (shopMode === 'cskh') {
+          label = isLocalRunning ? '⚡ Đưa cửa sổ lên trước (💬 CSKH)' : '💬 CSKH';
+        } else {
+          label = isLocalRunning ? '⚡ Đưa cửa sổ lên trước (GMV Max Ads)' : '📈 GMV Max Ads';
+        }
+      }
+      if (openButton.textContent !== label) openButton.textContent = label;
+    }
+
+    const actions = card.querySelector('.actions');
+    const closeButton = actions && actions.querySelector('.close-chrome-btn');
+    if (isLocalRunning && actions && !closeButton) {
+      actions.append(mkBtn(
+        '⏹ Đóng Chrome gian này',
+        'danger-outline small close-chrome-btn',
+        () => closeSingleShop(shop)
+      ));
+    } else if (!isLocalRunning && closeButton) {
+      closeButton.remove();
     }
   });
 
   const filtered = getFilteredShops();
   updateStatsAndBatchBar(filtered);
+}
+
+function refreshRunningStatusUI() {
+  if (activeGroup === '__RUNNING__') {
+    render();
+    return;
+  }
+  updateCardsRunningStatus();
+  renderGroupTabs();
+  renderDeptMonitor();
+  renderAdminDashboard();
 }
 
 function getShopMembers(shop) {
@@ -2161,7 +2230,7 @@ async function openShop(s, which) {
   if (r && r.ok) {
     runningIds.add(s.id);
     if (!r.alreadyOpen) recordShopActivity('open', s);
-    render();
+    refreshRunningStatusUI();
     if (r.extensionAccessNeedsRestart) {
       toast('GMV Max đã bị tắt cho tài khoản này. Nếu extension còn hiện, hãy đóng Chrome shop rồi mở lại.');
     }
@@ -2195,7 +2264,7 @@ async function closeSingleShop(s) {
     if (r && r.ok) {
       runningIds.delete(s.id);
       recordShopActivity('close', s);
-      render();
+      refreshRunningStatusUI();
       reportMyActiveShops();
       toast('Đã đóng Chrome của gian ' + s.name);
     } else {
@@ -2295,6 +2364,7 @@ $('openSelectedBtn').onclick = async () => {
       updateCardsRunningStatus();
     }
   }
+  refreshRunningStatusUI();
   const reportResult = await reportMyActiveShops();
   if (reportResult && !reportResult.ok && !reportResult.queued) {
     toast(`Đã mở ${openedCount}/${list.length} shop. ⚠️ Chưa đồng bộ được lên máy Admin: ${reportResult.error || 'Vui lòng kiểm tra kết nối mạng.'}`);
@@ -2324,7 +2394,7 @@ $('closeAllBtn').onclick = async () => {
       if (results[index] && results[index].ok) recordShopActivity('close', shop);
     });
     closedIds.forEach((id) => runningIds.delete(id));
-    render();
+    refreshRunningStatusUI();
     reportMyActiveShops();
     const failedCount = roleRunning.length - closedIds.length;
     toast(failedCount
@@ -2340,7 +2410,7 @@ $('closeAllBtn').onclick = async () => {
         if (closedIds.includes(shop.id)) recordShopActivity('close', shop);
       });
       closedIds.forEach((id) => runningIds.delete(id));
-      render();
+      refreshRunningStatusUI();
       reportMyActiveShops();
       toast(r.ok
         ? `Đã đóng toàn bộ ${r.closedCount} cửa sổ Chrome!`
@@ -3136,7 +3206,7 @@ $('pickBrowserBtn').onclick = async () => {
           Array.from(nextRunningIds).some((id) => !runningIds.has(id));
         if (changed) {
           runningIds = nextRunningIds;
-          render();
+          refreshRunningStatusUI();
         }
       }
       await reportMyActiveShops();

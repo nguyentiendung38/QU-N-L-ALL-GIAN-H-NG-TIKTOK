@@ -1,8 +1,8 @@
 {
-  "version": "2.1.61",
-  "buildNumber": 270,
+  "version": "2.1.62",
+  "buildNumber": 271,
   "updatedAt": "2026-10-16",
-  "notes": "add bộ phận kế toán",
+  "notes": "tối ưu hệ thống",
   "files": [
     "main.js",
     "main-core.js",
