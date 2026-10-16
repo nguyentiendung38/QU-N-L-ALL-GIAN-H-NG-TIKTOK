@@ -465,9 +465,9 @@ function getMemberShops(memberId) {
 }
 
 function getPermModeLabel(permMode) {
-  if (permMode === 'vanhanh') return '📦 Vận hành';
-  if (permMode === 'ads') return '📈 Ads';
-  return '💬 CSKH';
+  if (permMode === 'vanhanh') return 'Vận hành';
+  if (permMode === 'ads') return 'Ads';
+  return 'CSKH';
 }
 
 function getOpenActionForMode(permMode) {
@@ -565,9 +565,9 @@ function renderDeptMonitor() {
   }
 
   const depts = [
-    { key: 'cskh', name: 'Bộ phận CSKH', icon: '🎧', tag: 'CSKH', cls: 'dept-badge-cskh' },
-    { key: 'vanhanh', name: 'Bộ phận Vận hành', icon: '📦', tag: 'Vận hành', cls: 'dept-badge-vanhanh' },
-    { key: 'ads', name: 'Bộ phận Ads', icon: '📈', tag: 'Ads', cls: 'dept-badge-ads' }
+    { key: 'cskh', name: 'Bộ phận CSKH', tag: 'CSKH', cls: 'dept-badge-cskh' },
+    { key: 'vanhanh', name: 'Bộ phận Vận hành', tag: 'Vận hành', cls: 'dept-badge-vanhanh' },
+    { key: 'ads', name: 'Bộ phận Ads', tag: 'Ads', cls: 'dept-badge-ads' }
   ];
 
   const deptData = depts.map((d) => {
@@ -1124,8 +1124,8 @@ function renderLoginQuickAccounts() {
   if ($('loginDefaultHint')) {
     $('loginDefaultHint').textContent =
       (authConfig.adminPass || '123456') === '123456'
-        ? `TK Admin mặc định: ${authConfig.adminUser || 'admin'} / 123456`
-        : `TK Admin: ${authConfig.adminUser || 'admin'}`;
+        ? `: ${authConfig.adminUser || 'admin'} / 123456`
+        : '';
   }
 }
 
@@ -1597,6 +1597,7 @@ function renderGroupTabs() {
     (shop) => activePlatform === 'ALL' || (shop.platform || 'tiktok') === activePlatform
   );
   const shopeeCount = visibleRoleShops.filter((shop) => shop.platform === 'shopee').length;
+  const tiktokCount = visibleRoleShops.filter((shop) => (shop.platform || 'tiktok') === 'tiktok').length;
   const groups = Array.from(
     new Set(roleShops.map((s) => (s.group || '').trim()).filter(Boolean))
   );
@@ -1612,6 +1613,11 @@ function renderGroupTabs() {
   const items = [
     { key: '__ALL__', label: `Tất cả (${roleShops.length})` },
     { key: '__RUNNING__', label: `🟢 Đang mở (${runningInRole})` },
+    {
+      key: '__PLATFORM_TIKTOK__',
+      label: `🎵 TikTok (${tiktokCount})`,
+      platform: 'tiktok'
+    },
     {
       key: '__PLATFORM_SHOPEE__',
       label: `🛒 Shopee (${shopeeCount})`,
