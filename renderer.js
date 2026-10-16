@@ -631,7 +631,7 @@ function renderDeptMonitor() {
     const hasActive = d.openCount > 0;
     headerHtml += `
       <div class="dept-summary-pill ${hasActive ? 'active' : ''}" title="Bấm lọc các gian của bộ phận ${d.name}" onclick="filterByDept('${d.key}')">
-        <span>${d.icon} ${d.tag}:</span>
+        <span>${d.tag}:</span>
         <span style="color:#3fb950;font-weight:700;">🟢 ${d.openCount} mở</span>
         <span style="color:var(--muted);">• ${d.onlineCount} online</span>
       </div>
@@ -652,7 +652,7 @@ function renderDeptMonitor() {
     bodyHtml += `
       <div class="dept-column">
         <div class="dept-column-header">
-          <span class="${d.cls}">${d.icon} ${d.name} (${d.totalCount})</span>
+          <span class="${d.cls}">${d.name} (${d.totalCount})</span>
           <span class="dept-count-badge" style="color:${d.openCount > 0 ? '#3fb950' : 'var(--muted)'};">
             🟢 ${d.openCount} đang mở • ${d.onlineCount} online • ⚪ ${d.closedCount} đóng
           </span>
