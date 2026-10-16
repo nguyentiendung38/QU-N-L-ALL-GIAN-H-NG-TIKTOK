@@ -1,8 +1,8 @@
 {
-  "version": "2.1.58",
-  "buildNumber": 267,
+  "version": "2.1.59",
+  "buildNumber": 268,
   "updatedAt": "2026-10-16",
-  "notes": "fix bugs5",
+  "notes": "fix bugs6",
   "files": [
     "main.js",
     "main-core.js",

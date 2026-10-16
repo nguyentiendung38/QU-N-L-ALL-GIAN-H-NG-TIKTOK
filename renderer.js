@@ -467,6 +467,7 @@ function getMemberShops(memberId) {
 function getPermModeLabel(permMode) {
   if (permMode === 'vanhanh') return 'Vận hành';
   if (permMode === 'ads') return 'Ads';
+  if (permMode === 'accounting') return 'Kế toán';
   return 'CSKH';
 }
 
@@ -474,11 +475,13 @@ function getOpenActionForMode(permMode) {
   if (permMode === 'vanhanh') return 'cskh_orders';
   if (permMode === 'cskh') return 'cskh_orders';
   if (permMode === 'ads') return 'ads';
+  if (permMode === 'accounting') return 'tiktok';
   return 'tiktok';
 }
 
 function canCurrentUserUseGmvExtension() {
-  return !isMemberMode() || currentUser.member.gmvExtensionEnabled === true;
+  return !isMemberMode() ||
+    (currentUser.member.permMode !== 'accounting' && currentUser.member.gmvExtensionEnabled === true);
 }
 
 function getShopPermMode(shop) {
@@ -531,7 +534,7 @@ window.filterByMember = function (memberId) {
 
 window.filterByDept = function (deptKey) {
   const deptMembers = members.filter((m) => (m.permMode || 'cskh') === deptKey);
-  const deptName = deptKey === 'vanhanh' ? 'Vận hành' : (deptKey === 'ads' ? 'Ads' : 'CSKH');
+  const deptName = getPermModeLabel(deptKey);
   if (deptMembers.length > 0) {
     activeMember = deptMembers[0].id;
     if ($('memberFilterSelect')) $('memberFilterSelect').value = activeMember;
@@ -554,7 +557,7 @@ function renderDeptMonitor() {
   if (!members || members.length === 0) {
     container.innerHTML = `
       <div class="dept-monitor-header">
-        <div class="dept-monitor-title" title="Theo dõi trạng thái mở Chrome của nhân viên CSKH / Vận hành / Ads thời gian thực">
+        <div class="dept-monitor-title" title="Theo dõi trạng thái mở Chrome của nhân viên CSKH / Vận hành / Ads / Kế toán thời gian thực">
           <span class="dept-monitor-live-dot"></span>
           <span>Giám sát nhân viên theo bộ phận (Realtime)</span>
         </div>
@@ -567,7 +570,8 @@ function renderDeptMonitor() {
   const depts = [
     { key: 'cskh', name: 'Bộ phận CSKH', tag: 'CSKH', cls: 'dept-badge-cskh' },
     { key: 'vanhanh', name: 'Bộ phận Vận hành', tag: 'Vận hành', cls: 'dept-badge-vanhanh' },
-    { key: 'ads', name: 'Bộ phận Ads', tag: 'Ads', cls: 'dept-badge-ads' }
+    { key: 'ads', name: 'Bộ phận Ads', tag: 'Ads', cls: 'dept-badge-ads' },
+    { key: 'accounting', name: 'Bộ phận Kế toán', tag: 'Kế toán', cls: 'dept-badge-accounting' }
   ];
 
   const deptData = depts.map((d) => {
@@ -620,7 +624,7 @@ function renderDeptMonitor() {
 
   let headerHtml = `
     <div class="dept-monitor-header">
-      <div class="dept-monitor-title" title="Theo dõi trạng thái mở Chrome của nhân viên CSKH / Vận hành / Ads thời gian thực">
+      <div class="dept-monitor-title" title="Theo dõi trạng thái mở Chrome của nhân viên CSKH / Vận hành / Ads / Kế toán thời gian thực">
         <span class="dept-monitor-live-dot"></span>
         <span>Giám sát nhân viên theo bộ phận (Realtime)</span>
       </div>
@@ -1911,7 +1915,11 @@ function render() {
         const m = displayMembers[0];
         const mb = document.createElement('span');
         mb.className = 'badge member-badge';
-        const pTag = m.permMode === 'vanhanh' ? '📦 Vận hành' : (m.permMode === 'ads' ? '📈 Ads' : '🎧 CSKH');
+        const pTag = m.permMode === 'vanhanh'
+          ? '📦 Vận hành'
+          : (m.permMode === 'ads'
+            ? '📈 Ads'
+            : (m.permMode === 'accounting' ? 'Kế toán' : '🎧 CSKH'));
         mb.title = `Bộ phận ${pTag} — Phụ trách: ${m.name}`;
         const dot = document.createElement('span');
         dot.className = 'member-dot';
@@ -1938,7 +1946,11 @@ function render() {
         sel.appendChild(optDefault);
 
         displayMembers.forEach((m) => {
-          const pTag = m.permMode === 'vanhanh' ? '📦 Vận hành' : (m.permMode === 'ads' ? '📈 Ads' : '🎧 CSKH');
+          const pTag = m.permMode === 'vanhanh'
+            ? '📦 Vận hành'
+            : (m.permMode === 'ads'
+              ? '📈 Ads'
+              : (m.permMode === 'accounting' ? 'Kế toán' : '🎧 CSKH'));
           const opt = document.createElement('option');
           opt.value = m.id;
           opt.textContent = `${pTag}: ${m.name}`;
@@ -2024,6 +2036,14 @@ function render() {
         'Mở trực tiếp trang quản lý TikTok Seller Center'
       );
       actions.append(openBtn);
+    } else if (shopMode === 'accounting') {
+      const loginBtn = mkBtn(
+        isRunning ? '⚡ Đưa TikTok lên trước' : '🔐 Mở TikTok để đăng nhập',
+        'primary both',
+        () => openShop(s, 'tiktok'),
+        'Chỉ mở trang TikTok của shop để nhân viên đăng nhập'
+      );
+      actions.append(loginBtn);
     } else if (shopMode === 'vanhanh') {
       // Quyền Vận hành: ẨN GMV Max Ads, ẨN Check đơn cũ, ẨN CSKH -> CHỈ HIỆN 1 nút Đơn hàng (To Ship)
       const vhBtn = mkBtn(
@@ -2537,20 +2557,29 @@ function updateMemberPermLinksUI() {
   const mode = $('mPermMode').value || 'cskh';
   const isAds = mode === 'ads';
   const isVanhanh = mode === 'vanhanh';
+  const isAccounting = mode === 'accounting';
 
   if ($('mAdsLinkRow')) {
     $('mAdsLinkRow').classList.toggle('hidden', !isAds);
   }
   if ($('mCskhOrdersRow')) {
-    $('mCskhOrdersRow').classList.toggle('hidden', isAds);
+    $('mCskhOrdersRow').classList.toggle('hidden', isAds || isAccounting);
+  }
+  if ($('mAccountingLoginRow')) {
+    $('mAccountingLoginRow').classList.toggle('hidden', !isAccounting);
+  }
+  if ($('mGmvPermissionWrap')) {
+    $('mGmvPermissionWrap').classList.toggle('hidden', isAccounting);
   }
 
   if ($('mPermLinksTitle')) {
     $('mPermLinksTitle').textContent = isAds
       ? '🔗 Link mở trang cho nhân viên Ads:'
-      : (isVanhanh
-        ? '🔗 Link mở trang cho nhân viên Vận hành:'
-        : '🔗 Link mở trang cho nhân viên CSKH:');
+      : (isAccounting
+        ? 'Quyền mở shop của nhân viên Kế toán:'
+        : (isVanhanh
+          ? '🔗 Link mở trang cho nhân viên Vận hành:'
+          : '🔗 Link mở trang cho nhân viên CSKH:'));
   }
 
   if ($('mCskhOrdersLabel')) {
@@ -2612,7 +2641,7 @@ function renderMembersListModal() {
   if (!members.length) {
     box.innerHTML =
       '<div style="text-align:center;color:var(--muted);padding:40px 16px;font-size:13px;border:1px dashed var(--line);border-radius:10px;">' +
-      'Chưa có thành viên nào.<br>Hãy nhập Họ tên, Tài khoản, Mật khẩu ở khung bên trái, chọn <b>🎧 Quyền CSKH</b> hoặc <b>📦 Quyền Vận hành</b> và tích chọn các gian hàng để tạo tài khoản cho nhân viên.' +
+      'Chưa có thành viên nào.<br>Hãy nhập Họ tên, Tài khoản, Mật khẩu ở khung bên trái, chọn quyền CSKH, Vận hành, Ads hoặc Kế toán và tích chọn các gian hàng để tạo tài khoản cho nhân viên.' +
       '</div>';
     return;
   }
@@ -2645,7 +2674,11 @@ function renderMembersListModal() {
 
     const roleSpan = document.createElement('span');
     roleSpan.className = 'member-role';
-    if (pMode === 'vanhanh') {
+    if (pMode === 'accounting') {
+      roleSpan.style.color = '#e3b341';
+      roleSpan.style.borderColor = 'rgba(227,179,65,.45)';
+      roleSpan.textContent = 'Quyền Kế toán (Chỉ mở shop để đăng nhập)';
+    } else if (pMode === 'vanhanh') {
       roleSpan.style.color = '#f5a524';
       roleSpan.style.borderColor = 'rgba(245,165,36,.45)';
       roleSpan.textContent = '📦 Quyền Vận hành (Chỉ mở Đơn hàng To Ship)';
@@ -2671,7 +2704,9 @@ function renderMembersListModal() {
     const tiktokCount = mShops.length - shopeeCount;
     sub.textContent = `Đang được phân công: ${mShops.length} shop (🎵 TikTok ${tiktokCount} • 🛒 Shopee ${shopeeCount})` +
       (m.phone ? ` • 📞 ${m.phone}` : '') +
-      (m.gmvExtensionEnabled === true ? ' • 🧩 GMV Max: Đã bật' : ' • 🧩 GMV Max: Đã tắt');
+      (pMode === 'accounting'
+        ? ''
+        : (m.gmvExtensionEnabled === true ? ' • 🧩 GMV Max: Đã bật' : ' • 🧩 GMV Max: Đã tắt'));
 
     info.append(nameRow, sub);
     head.append(av, info);
@@ -2707,11 +2742,13 @@ function renderMembersListModal() {
         $('membersDlg').close();
         render();
         const modeDesc =
-          pMode === 'vanhanh'
-            ? 'Chế độ Vận hành: chỉ hiện nút 📦 Đơn hàng To Ship'
-            : pMode === 'cskh'
-            ? 'Chế độ CSKH: chỉ hiện nút 💬 CSKH (Check đơn hàng)'
-            : 'Chế độ Ads';
+          pMode === 'accounting'
+            ? 'Chế độ Kế toán: chỉ mở TikTok để đăng nhập'
+            : (pMode === 'vanhanh'
+              ? 'Chế độ Vận hành: chỉ hiện nút 📦 Đơn hàng To Ship'
+              : pMode === 'cskh'
+                ? 'Chế độ CSKH: chỉ hiện nút 💬 CSKH (Check đơn hàng)'
+                : 'Chế độ Ads');
         toast(`👤 Đang xem giao diện của nhân viên ${m.name} (${modeDesc}).`);
       },
       'Chuyển sang đúng màn hình làm việc của nhân viên này'
@@ -2727,7 +2764,8 @@ function renderMembersListModal() {
         toast(`Đang mở ${mShops.length} gian của ${m.name} (${getPermModeLabel(pMode)})...`);
         let openedCount = 0;
         for (let i = 0; i < mShops.length; i++) {
-          const result = await window.api.openShop(mShops[i].id, openMode, '', m.gmvExtensionEnabled === true);
+          const allowGmvExtension = pMode !== 'accounting' && m.gmvExtensionEnabled === true;
+          const result = await window.api.openShop(mShops[i].id, openMode, '', allowGmvExtension);
           if (result && result.ok) {
             runningIds.add(mShops[i].id);
             openedCount++;
@@ -2752,6 +2790,7 @@ function renderMembersListModal() {
       },
       'Cấp hoặc thu hồi quyền dùng extension GMV Max cho tài khoản này'
     );
+    toggleGmvExtensionBtn.classList.toggle('hidden', pMode === 'accounting');
 
     const copyCredBtn = mkBtn(
       '📋 Copy TK/MK gửi NV',
@@ -2912,13 +2951,13 @@ $('mSaveBtn').onclick = async () => {
   const username = ($('mUsername').value.trim() || slugUsername(name) || 'nv' + (members.length + 1)).toLowerCase();
   const password = $('mPassword').value.trim() || '123456';
   const permMode = $('mPermMode').value || 'cskh';
-  const role = permMode === 'vanhanh' ? 'Vận hành' : (permMode === 'cskh' ? 'CSKH' : 'Ads');
+  const role = getPermModeLabel(permMode);
   const adsUrl = ($('mAdsUrl') && $('mAdsUrl').value.trim()) || DEFAULT_ADS;
   const cskhOrdersUrl = $('mCskhOrders').value.trim() || DEFAULT_CSKH_ORDERS;
   const cskhChatUrl = ($('mCskhChat') && $('mCskhChat').value.trim()) || cskhOrdersUrl;
   const phone = $('mPhone').value.trim();
   const color = $('mColor').value || '#388bfd';
-  const gmvExtensionEnabled = $('mGmvExtensionEnabled').checked;
+  const gmvExtensionEnabled = permMode !== 'accounting' && $('mGmvExtensionEnabled').checked;
   const checkedShopIds = new Set(
     Array.from($('mShopsChecklist').querySelectorAll('input[type="checkbox"]:checked')).map((c) => c.value)
   );

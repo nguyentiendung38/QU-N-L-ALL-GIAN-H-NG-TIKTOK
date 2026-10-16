@@ -1276,6 +1276,7 @@
   .dept-badge-cskh { color: #56e3d8; }
   .dept-badge-vanhanh { color: #f2994a; }
   .dept-badge-ads { color: #d2a8ff; }
+  .dept-badge-accounting { color: #e3b341; }
   .dept-count-badge {
     font-size: 11px;
     padding: 2px 7px;
@@ -1623,7 +1624,7 @@
 
 <dialog id="membersDlg">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <h2 style="margin:0;">👥 Quản lý thành viên & Phân quyền CSKH / Vận hành / Ads</h2>
+    <h2 style="margin:0;">👥 Quản lý thành viên & Phân quyền CSKH / Vận hành / Ads / Kế toán</h2>
     <div style="display:flex;align-items:center;gap:10px;">
       <button class="btn small" id="openAdminPassFromMembersBtn" title="Đổi tài khoản / mật khẩu của Quản trị viên">🔑 Đổi TK/MK Admin</button>
       <button class="btn small" id="closeMembersDlgBtn">✕ Đóng</button>
@@ -1653,6 +1654,7 @@
             <option value="cskh">Quyền CSKH</option>
             <option value="vanhanh">Quyền Vận hành</option>
             <option value="ads">Quyền Ads</option>
+            <option value="accounting">Quyền Kế toán</option>
           </select>
         </div>
         <div>
@@ -1673,9 +1675,12 @@
           <label style="margin-top:4px;" id="mAdsLinkLabel">Link mở GMV Max Ads</label>
           <input type="text" id="mAdsUrl" style="font-size:12px;padding:6px 8px;" placeholder="https://seller-vn.tiktok.com/ads-creation/dashboard?...">
         </div>
+        <div id="mAccountingLoginRow" class="hidden" style="font-size:12px;color:var(--muted);padding:4px 0;">
+          Nhân viên chỉ mở trang TikTok của shop để đăng nhập.
+        </div>
       </div>
 
-      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;">
+      <label id="mGmvPermissionWrap" style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;">
         <input type="checkbox" id="mGmvExtensionEnabled" style="width:auto;margin-top:2px;">
         <span>
           Cho phép dùng extension GMV Max
