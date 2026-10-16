@@ -1624,7 +1624,7 @@
 
 <dialog id="membersDlg">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <h2 style="margin:0;">👥 Quản lý thành viên & Phân quyền CSKH / Vận hành / Ads / Kế toán</h2>
+    <h2 style="margin:0;">👥 Quản lý thành viên</h2>
     <div style="display:flex;align-items:center;gap:10px;">
       <button class="btn small" id="openAdminPassFromMembersBtn" title="Đổi tài khoản / mật khẩu của Quản trị viên">🔑 Đổi TK/MK Admin</button>
       <button class="btn small" id="closeMembersDlgBtn">✕ Đóng</button>
@@ -1715,6 +1715,14 @@
         </div>
         <button class="btn small" id="openLoginFromModalBtn" style="color:#79c0ff;">🔐 Mở màn hình Đăng nhập</button>
       </div>
+      <label for="memberDepartmentFilter" style="display:block;margin:0 0 5px;font-size:12px;color:var(--muted);">Lọc thành viên theo bộ phận</label>
+      <select id="memberDepartmentFilter" class="member-filter-select" style="width:100%;margin-bottom:10px;">
+        <option value="ALL">Tất cả bộ phận</option>
+        <option value="cskh">CSKH</option>
+        <option value="vanhanh">Vận hành</option>
+        <option value="ads">Ads</option>
+        <option value="accounting">Kế toán</option>
+      </select>
       <div class="members-list-box" id="membersListBox"></div>
     </div>
   </div>

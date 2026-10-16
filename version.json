@@ -1,8 +1,8 @@
 {
-  "version": "2.1.59",
-  "buildNumber": 268,
+  "version": "2.1.60",
+  "buildNumber": 269,
   "updatedAt": "2026-10-16",
-  "notes": "fix bugs6",
+  "notes": "add bộ phận kế toán",
   "files": [
     "main.js",
     "main-core.js",

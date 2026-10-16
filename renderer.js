@@ -2634,11 +2634,11 @@ function startEditMember(m) {
 }
 
 function renderMembersListModal() {
-  $('membersTotalCount').textContent = String(members.length);
   const box = $('membersListBox');
   box.innerHTML = '';
 
   if (!members.length) {
+    $('membersTotalCount').textContent = '0';
     box.innerHTML =
       '<div style="text-align:center;color:var(--muted);padding:40px 16px;font-size:13px;border:1px dashed var(--line);border-radius:10px;">' +
       'Chưa có thành viên nào.<br>Hãy nhập Họ tên, Tài khoản, Mật khẩu ở khung bên trái, chọn quyền CSKH, Vận hành, Ads hoặc Kế toán và tích chọn các gian hàng để tạo tài khoản cho nhân viên.' +
@@ -2646,7 +2646,24 @@ function renderMembersListModal() {
     return;
   }
 
-  members.forEach((m) => {
+  const selectedDepartment = $('memberDepartmentFilter').value;
+  const visibleMembers = selectedDepartment === 'ALL'
+    ? members
+    : members.filter((m) => (m.permMode || 'cskh') === selectedDepartment);
+  $('membersTotalCount').textContent = selectedDepartment === 'ALL'
+    ? String(visibleMembers.length)
+    : `${visibleMembers.length}/${members.length}`;
+
+  if (!visibleMembers.length) {
+    const departmentName = getPermModeLabel(selectedDepartment);
+    box.innerHTML =
+      '<div style="text-align:center;color:var(--muted);padding:40px 16px;font-size:13px;border:1px dashed var(--line);border-radius:10px;">' +
+      `Không có thành viên thuộc bộ phận ${departmentName}.` +
+      '</div>';
+    return;
+  }
+
+  visibleMembers.forEach((m) => {
     const mShops = getMemberShops(m.id);
     const uname = m.username || slugUsername(m.name) || m.name;
     const upass = m.password || '123456';
@@ -2841,6 +2858,7 @@ $('membersBtn').onclick = () => openMembersDialog();
 $('closeMembersDlgBtn').onclick = () => $('membersDlg').close();
 $('mCancelEditBtn').onclick = () => resetMemberForm();
 $('openLoginFromModalBtn').onclick = () => showLoginScreen();
+$('memberDepartmentFilter').onchange = () => renderMembersListModal();
 
 function openAdminPassDialog() {
   if (!authConfig) authConfig = { adminUser: 'admin', adminPass: '123456', requireLogin: true };
