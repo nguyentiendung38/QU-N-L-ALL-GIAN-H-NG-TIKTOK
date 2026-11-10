@@ -415,7 +415,7 @@ async function refreshActivityHistory(force = false) {
   const refreshPromise = (async () => {
     try {
       const result = await window.api.cloudGetActivity();
-      if (!result || !result.ok) {
+      if (!result || (!result.ok && (!result.events || !result.events.length))) {
         activitySyncError = (result && result.error) || 'Không tải được lịch sử hoạt động từ Cloud';
         return { ok: false, error: activitySyncError };
       }

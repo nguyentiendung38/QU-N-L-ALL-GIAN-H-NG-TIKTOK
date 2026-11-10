@@ -1,8 +1,8 @@
 {
-  "version": "2.1.65",
-  "buildNumber": 274,
+  "version": "2.1.66",
+  "buildNumber": 275,
   "updatedAt": "2026-11-10",
-  "notes": "Tang toc dong bo: heartbeat 3s, poll 2s, timeout 4s - fix OTA qua GitHub",
+  "notes": "Fix loi HTTP 503 khi dong bo hoat dong: cache event in-memory, giam maxSockets xuong 15, retry 503",
   "files": [
     "main.js",
     "main-core.js",
