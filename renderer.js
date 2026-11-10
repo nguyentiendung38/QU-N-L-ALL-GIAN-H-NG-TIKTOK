@@ -260,11 +260,11 @@ async function refreshOnlineActiveShops(force = false) {
       if (!res || typeof res !== 'object') {
         throw new Error('Cloud không trả về dữ liệu trạng thái nhân viên hợp lệ.');
       }
-      if (res.error) {
+      const hasUserData = res.users && Object.keys(res.users).length > 0;
+      if (res.error && !hasUserData) {
         activeCloudOk = false;
         activeStatusFetchError = res.error;
         console.warn('Không tải được trạng thái shop từ Cloud:', res.error);
-        if (res.users) onlineActiveUsers = res.users;
       } else if (res.shops || res.users) {
         activeCloudOk = true;
         activeStatusFetchError = '';
@@ -3191,11 +3191,11 @@ $('pickBrowserBtn').onclick = async () => {
   setInterval(() => {
     syncFromCloud(false, true);
   }, 15000);
-  // Dong bo trang thai mo/dong gian hang Online moi 2 giay (nhanh, Admin thay ngay)
+  // Dong bo trang thai mo/dong gian hang Online moi 3 giay (nhanh, Admin thay ngay va tranh qua tai Cloud)
   setInterval(() => {
     if (currentUser && !isMemberMode()) refreshOnlineActiveShops();
-  }, 2000);
-  // Heartbeat dinh ky moi 3 giay de lien tuc lam moi trang thai Online & dong bo gian hang dang mo len Cloud
+  }, 3000);
+  // Heartbeat dinh ky moi 4 giay de lien tuc lam moi trang thai Online & dong bo gian hang dang mo len Cloud
   setInterval(async () => {
     if (!currentUser) return;
     try {
@@ -3214,7 +3214,7 @@ $('pickBrowserBtn').onclick = async () => {
     } catch (err) {
       console.warn('Không gửi được heartbeat nhân viên lên Cloud:', err);
     }
-  }, 3000);
+  }, 4000);
   setInterval(() => {
     if (currentUser && !isMemberMode()) refreshActivityHistory();
   }, 60000);

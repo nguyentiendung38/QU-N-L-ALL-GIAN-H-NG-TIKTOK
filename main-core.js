@@ -846,7 +846,11 @@ ipcMain.handle('cloud:getActive', async () => {
     await Promise.all(
       uniqueKeys.map(async (k) => {
         try {
-          const res = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/act_${encodeURIComponent(k)}`, 'GET');
+          let res = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/act_${encodeURIComponent(k)}`, 'GET');
+          if (res.status === 503) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            res = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${encodeURIComponent(cloudKey)}/act_${encodeURIComponent(k)}`, 'GET');
+          }
           if (res.status === 200 && res.body) {
             let raw = res.body.trim();
             if (raw.startsWith('"') && raw.endsWith('"')) {
@@ -893,10 +897,17 @@ ipcMain.handle('cloud:getActive', async () => {
               return;
             }
           } else if (res.status !== 404) {
-            activeReadError = activeReadError || res.error || `Cloud trả về HTTP ${res.status} khi đọc trạng thái ${k}`;
+            // Nếu đã có cache còn hiệu lực thì dùng cache, không báo lỗi làm phiền Admin
+            const cached = cloudActiveCache.get(k);
+            if (!cached || (Date.now() - (cached.lastFetched || 0) > 60000)) {
+              activeReadError = activeReadError || res.error || `Cloud trả về HTTP ${res.status} khi đọc trạng thái ${k}`;
+            }
           }
         } catch (e) {
-          activeReadError = activeReadError || e.message;
+          const cached = cloudActiveCache.get(k);
+          if (!cached || (Date.now() - (cached.lastFetched || 0) > 60000)) {
+            activeReadError = activeReadError || e.message;
+          }
           const now = Date.now();
           if (now - lastActiveFetchWarningAt >= 60000) {
             console.warn('Không đọc được trạng thái nhân viên từ Cloud:', e.message);

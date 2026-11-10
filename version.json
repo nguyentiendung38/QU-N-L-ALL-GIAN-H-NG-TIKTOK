@@ -1,8 +1,8 @@
 {
-  "version": "2.1.67",
-  "buildNumber": 276,
+  "version": "2.1.68",
+  "buildNumber": 277,
   "updatedAt": "2026-11-10",
-  "notes": "Fix loi HTTP 503 khi dong bo hoat dong: cache event in-memory, giam maxSockets, retry 503",
+  "notes": "Khac phuc triet de loi HTTP 503 khi doc trang thai nhan vien: retry 503, tan dung cache giu trang thai, toi uu tan suat dong bo",
   "files": [
     "main.js",
     "main-core.js",
