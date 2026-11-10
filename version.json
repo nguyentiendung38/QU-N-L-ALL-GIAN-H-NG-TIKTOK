@@ -1,8 +1,8 @@
 {
-  "version": "2.1.76",
-  "buildNumber": 285,
+  "version": "2.1.77",
+  "buildNumber": 286,
   "updatedAt": "2026-11-10",
-  "notes": "Sửa lỗi đăng nhập bị treo và không báo lỗi",
+  "notes": "fix lõi lịch sử",
   "files": [
     "main.js",
     "main-core.js",
