@@ -164,22 +164,47 @@ async function pushToCloudNow() {
       chunks.push(compressed.slice(i, i + chunkSize));
     }
 
-    await Promise.all(
-      chunks.map((ch, idx) =>
-        httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/c_${idx}/${ch}`, 'POST', '')
-      )
-    );
+    // Day tung chunk len keyvalue co retry va gian cach de tranh bi Cloudflare / Keyvalue 503
+    for (let idx = 0; idx < chunks.length; idx++) {
+      const ch = chunks[idx];
+      let uploaded = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const cRes = await httpsReq(
+          `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/c_${idx}/${ch}`,
+          'POST',
+          ''
+        );
+        if (cRes.status === 200) {
+          uploaded = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 80 * attempt));
+      }
+      if (!uploaded) {
+        throw new Error(`Không thể tải lên chunk ${idx} lên Cloud (HTTP 503 / lỗi mạng).`);
+      }
+      await new Promise((r) => setTimeout(r, 40));
+    }
 
     const manifest = `${bbKey}_${chunks.length}_${updatedAt}`;
-    const mRes = await httpsReq(
-      `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/manifest/${manifest}`,
-      'POST',
-      ''
-    );
+    let mRes = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      mRes = await httpsReq(
+        `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${cloudKey}/manifest/${manifest}`,
+        'POST',
+        ''
+      );
+      if (mRes.status === 200) break;
+      await new Promise((r) => setTimeout(r, 100 * attempt));
+    }
+
+    if (!mRes || mRes.status !== 200) {
+      throw new Error('Không thể cập nhật manifest lên Cloud.');
+    }
 
     s.lastCloudUpdatedAt = updatedAt;
     writeJson(settingsFile(), s);
-    return { ok: mRes.status === 200, updatedAt };
+    return { ok: true, updatedAt };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -198,8 +223,22 @@ async function pullFromCloud(force = false) {
     const cloudKey = (s.cloudKey || DEFAULT_CLOUD_KEY).trim();
     const localUpdatedAt = Number(s.lastCloudUpdatedAt) || 0;
 
-    const mRes = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${cloudKey}/manifest`, 'GET');
-    if (mRes.status !== 200 || !mRes.body) {
+    let mRes = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      mRes = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${cloudKey}/manifest`, 'GET');
+      if (
+        mRes &&
+        mRes.status === 200 &&
+        mRes.body &&
+        !mRes.body.includes('Service Unavailable') &&
+        !mRes.body.includes('<html>')
+      ) {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 120 * attempt));
+    }
+
+    if (!mRes || mRes.status !== 200 || !mRes.body || mRes.body.includes('Service Unavailable')) {
       return {
         ok: false,
         error: 'CLOUD_UNREACHABLE',
@@ -263,23 +302,40 @@ async function pullFromCloud(force = false) {
 
     // Uu tien 2 (Du phong): Ghep cac chunk tu keyvalue.immanuel.co
     if (!remoteData && chunkCount > 0) {
-      const chunkResponses = await Promise.all(
-        Array.from({ length: chunkCount }, (_, i) =>
-          httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${cloudKey}/c_${i}`, 'GET')
-        )
-      );
-      const joined = chunkResponses
-        .map((r) => {
-          try {
-            return JSON.parse(r.body) || '';
-          } catch {
-            return String(r.body || '').replace(/^"|"$/g, '');
+      const chunks = [];
+      let allChunksOk = true;
+
+      for (let i = 0; i < chunkCount; i++) {
+        let chunkBody = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const res = await httpsReq(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${cloudKey}/c_${i}`, 'GET');
+          if (res.status === 200 && res.body) {
+            try {
+              chunkBody = JSON.parse(res.body);
+            } catch {
+              chunkBody = String(res.body).replace(/^"|"$/g, '');
+            }
+            if (chunkBody) break;
           }
-        })
-        .join('');
-      if (joined) {
-        const rawJson = zlib.inflateRawSync(Buffer.from(joined, 'base64url')).toString('utf8');
-        remoteData = JSON.parse(rawJson);
+          await new Promise((r) => setTimeout(r, 80 * attempt));
+        }
+
+        if (!chunkBody) {
+          allChunksOk = false;
+          break;
+        }
+        chunks.push(chunkBody);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+
+      if (allChunksOk && chunks.length === chunkCount) {
+        try {
+          const joined = chunks.join('');
+          const rawJson = zlib.inflateRawSync(Buffer.from(joined, 'base64url')).toString('utf8');
+          remoteData = JSON.parse(rawJson);
+        } catch (inflateErr) {
+          console.warn('Lỗi giải nén cloud chunks:', inflateErr.message);
+        }
       }
     }
 

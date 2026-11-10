@@ -1150,9 +1150,30 @@ async function syncFromCloud(force = false, silent = true, refreshActive = true)
 
     if (isMemberMode() && currentUser && currentUser.member) {
       const updatedMember = members.find((m) => m.id === currentUser.member.id);
-      if (updatedMember) {
-        currentUser.member = updatedMember;
+      if (!updatedMember || (currentUser.member.password && updatedMember.password !== currentUser.member.password)) {
+        console.warn('⚠️ Tài khoản nhân viên không còn tồn tại trên Cloud hoặc mật khẩu đã đổi!');
+        try { await window.api.clearSavedLogin(); } catch {}
+        try { await window.api.closeAllShops(); } catch {}
+        try {
+          await window.api.cloudReportActive({
+            userKey: currentUser.member.id,
+            userName: currentUser.member.name,
+            shopIds: []
+          });
+        } catch {}
+        runningIds.clear();
+        refreshRunningStatusUI();
+        currentUser = null;
+        document.body.classList.add('locked');
+        if ($('loginOverlay')) $('loginOverlay').classList.remove('hidden');
+        if ($('loginPass')) $('loginPass').value = '';
+        if ($('loginUser')) $('loginUser').value = '';
+        if ($('rememberLoginChk')) $('rememberLoginChk').checked = false;
+        alert('⚠️ Tài khoản của bạn đã bị Quản trị viên xóa khỏi hệ thống hoặc thay đổi mật khẩu.\nỨng dụng đã tự động đóng toàn bộ gian hàng và thoát.');
+        showLoginScreen();
+        return false;
       }
+      currentUser.member = updatedMember;
     }
 
     if (statusEl) {
@@ -1279,8 +1300,8 @@ async function doLogin(silent = false) {
     return u.toLowerCase() === adminU && p === adminP;
   };
 
-  // Neu chua khop ngay tren may -> tu dong tai du lieu Online moi nhat tu Cloud roi kiem tra lai
-  if (!checkAdmin() && !findMatchingMember(u, p)) {
+  // Luon dong bo du lieu Online moi nhat tu Cloud truoc khi dang nhap thanh vien de dam bao tai khoan chua bi xoa
+  if (!checkAdmin()) {
     if (!silent) {
       $('loginSubmitBtn').disabled = true;
       $('loginSubmitBtn').textContent = '⏳ Đang đồng bộ tài khoản Online...';
@@ -1349,6 +1370,11 @@ async function doLogin(silent = false) {
   if (!silent) {
     errBox.textContent = '❌ Sai tài khoản hoặc mật khẩu! Vui lòng kiểm tra lại.';
     errBox.classList.remove('hidden');
+  } else {
+    // Neu tu dong dang nhap that bai (do tai khoan bi xoa hoac doi mat khau) -> xoa ngay thong tin da ghi nho
+    try {
+      await window.api.clearSavedLogin();
+    } catch {}
   }
   return false;
 }
@@ -2937,9 +2963,15 @@ function renderMembersListModal() {
       if (editingMemberId === m.id) resetMemberForm();
       await persistMembers();
       await persist();
+      try {
+        await window.api.cloudReportActive({ userKey: m.id, userName: m.name, shopIds: [] });
+      } catch {}
+      try {
+        await window.api.cloudPush();
+      } catch {}
       renderMembersListModal();
       render();
-      toast(`Đã xóa thành viên ${m.name} (Đã đồng bộ Online)`);
+      toast(`🗑 Đã xóa thành viên ${m.name} và đồng bộ tức thì lên Cloud!`);
     });
 
     actions.append(viewAsMemberBtn, openAllMemberBtn, toggleGmvExtensionBtn, copyCredBtn, editBtn, delBtn);

@@ -1,8 +1,8 @@
 {
-  "version": "2.1.72",
-  "buildNumber": 281,
+  "version": "2.1.73",
+  "buildNumber": 282,
   "updatedAt": "2026-11-10",
-  "notes": "Sua triet de loi Chrome treo duoi taskbar: diet nhanh bang taskkill tree va quet don sach process khi tat app",
+  "notes": "Fix dong bo cloud chunks bi 503 va co che khoa/dang xuat tuc thi tai khoan nhan vien da bi xoa",
   "files": [
     "main.js",
     "main-core.js",
