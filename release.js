@@ -109,13 +109,19 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
   //    main-core.js ota:check/apply sẽ fallback tải từng file từ GitHub raw nếu không có bbKey
   console.log('\n☁️ Đang kích hoạt OTA manifest trên Cloud...');
   const manifest = `github-${verData.buildNumber}`;
-  const mRes = await httpsReq(
-    `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${CLOUD_APP_KEY}/otamanifest/${manifest}`,
-    'POST',
-    ''
-  );
-  if (mRes.status !== 200) {
-    throw new Error(`Đã push source nhưng không kích hoạt được OTA manifest: HTTP ${mRes.status} ${mRes.error || ''}`);
+  let mRes = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    mRes = await httpsReq(
+      `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${CLOUD_APP_KEY}/otamanifest/${manifest}`,
+      'POST',
+      ''
+    );
+    if (mRes.status === 200) break;
+    console.log(`⚠️ Keyvalue trả về HTTP ${mRes.status}, thử lại sau 1.5s (${attempt + 1}/5)...`);
+    await new Promise((res) => setTimeout(res, 1500));
+  }
+  if (!mRes || mRes.status !== 200) {
+    throw new Error(`Đã push source nhưng không kích hoạt được OTA manifest: HTTP ${mRes ? mRes.status : 0} ${(mRes && mRes.error) || ''}`);
   }
   console.log(`✅ Đã kích hoạt OTA v${verData.version} (Build ${verData.buildNumber}). Máy khách có thể bấm "Cập nhật ngay".\n`);
 })();
