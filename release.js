@@ -73,8 +73,8 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
   console.log(`📝 Nội dung thông báo: "${verData.notes}"`);
   console.log(`======================================================\n`);
 
-  // 1. Tạo gói bundle code mới để upload lên Cloud OTA (bytebin + keyvalue)
-  console.log('☁️ Đang đóng gói và đẩy bản cập nhật lên Cloud OTA...');
+  // 1. Git commit & push files lên GitHub TRƯỚC
+  // (ota:apply sẽ tải từng file từ GitHub raw — không cần bytebin)
   const updateFiles = Array.from(new Set([
     ...(Array.isArray(verData.files) ? verData.files : []),
     'main.js',
@@ -85,38 +85,7 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
     'preload.js',
     'version.json'
   ]));
-  const files = {};
-  for (const file of updateFiles) {
-    const fullPath = path.resolve(__dirname, file);
-    if (!fullPath.startsWith(__dirname + path.sep)) {
-      throw new Error(`Đường dẫn file OTA không hợp lệ: ${file}`);
-    }
-    files[file] = fs.readFileSync(fullPath, 'utf8');
-  }
-  const bundle = {
-    version: verData.version,
-    buildNumber: verData.buildNumber,
-    updatedAt: verData.updatedAt,
-    notes: verData.notes,
-    files
-  };
 
-  const bbRes = await httpsReq('https://bytebin.lucko.me/post', 'POST', JSON.stringify(bundle), {
-    'Content-Type': 'application/json'
-  });
-
-  let bbKey = '';
-  if (bbRes.status === 201 && bbRes.body) {
-    try {
-      bbKey = JSON.parse(bbRes.body).key || '';
-    } catch {}
-  }
-  if (!bbKey) {
-    throw new Error(`Không upload được gói OTA lên bytebin: HTTP ${bbRes.status} ${bbRes.error || ''}`);
-  }
-  console.log(`✅ Upload gói code thành công (Key: ${bbKey})!`);
-
-  // 2. Commit & Push source files used by the release
   try {
     console.log('\n📦 Đang git add & git commit & git push...');
     const sourceFiles = Array.from(new Set([
@@ -136,7 +105,10 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
     throw new Error(`Không commit/push được source release: ${e.message}`);
   }
 
-  const manifest = `${bbKey}-${verData.buildNumber}`;
+  // 2. Kích hoạt OTA manifest trên keyvalue — chỉ lưu "github-{buildNumber}"
+  //    main-core.js ota:check/apply sẽ fallback tải từng file từ GitHub raw nếu không có bbKey
+  console.log('\n☁️ Đang kích hoạt OTA manifest trên Cloud...');
+  const manifest = `github-${verData.buildNumber}`;
   const mRes = await httpsReq(
     `https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${CLOUD_APP_KEY}/otamanifest/${manifest}`,
     'POST',
@@ -145,5 +117,5 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
   if (mRes.status !== 200) {
     throw new Error(`Đã push source nhưng không kích hoạt được OTA manifest: HTTP ${mRes.status} ${mRes.error || ''}`);
   }
-  console.log(`✅ Đã kích hoạt OTA v${verData.version}. Máy khách có thể bấm "Cập nhật ngay".\n`);
+  console.log(`✅ Đã kích hoạt OTA v${verData.version} (Build ${verData.buildNumber}). Máy khách có thể bấm "Cập nhật ngay".\n`);
 })();

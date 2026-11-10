@@ -82,9 +82,9 @@ function readAuthObj() {
 
 const httpsAgent = new https.Agent({
   keepAlive: true,
-  keepAliveMsecs: 15000,
-  maxSockets: 30,
-  timeout: 8000
+  keepAliveMsecs: 10000,
+  maxSockets: 50,
+  timeout: 4000  // Giảm timeout để tránh block heartbeat tiếp theo
 });
 
 function httpsReq(url, method = 'GET', body = null, extraHeaders = {}) {
@@ -97,7 +97,7 @@ function httpsReq(url, method = 'GET', body = null, extraHeaders = {}) {
           path: u.pathname + u.search,
           method,
           agent: httpsAgent,
-          timeout: 8000,
+          timeout: 4000,  // Giảm timeout: tránh block 8s khi mạng chậm
           headers: {
             'User-Agent': 'Mozilla/5.0',
             ...extraHeaders,
@@ -387,18 +387,29 @@ ipcMain.handle('ota:check', async () => {
       }
     }
 
-    if (bbKey && remoteBuild > 0) {
+    if (remoteBuild > 0) {
       const hasUpdate = remoteBuild > currentBuild;
       let notes = 'Cập nhật tính năng mới từ hệ thống';
       let latestVersion = '2.1.' + remoteBuild;
 
       if (hasUpdate) {
         try {
-          const bbInfo = await httpsReq(`https://bytebin.lucko.me/${bbKey}`, 'GET');
-          if (bbInfo.status === 200 && bbInfo.body) {
-            const parsed = JSON.parse(bbInfo.body);
-            if (parsed.version) latestVersion = parsed.version;
-            if (parsed.notes) notes = parsed.notes;
+          if (bbKey && bbKey !== 'github') {
+            // Có bbKey bytebin — tải metadata từ bytebin
+            const bbInfo = await httpsReq(`https://bytebin.lucko.me/${bbKey}`, 'GET');
+            if (bbInfo.status === 200 && bbInfo.body) {
+              const parsed = JSON.parse(bbInfo.body);
+              if (parsed.version) latestVersion = parsed.version;
+              if (parsed.notes) notes = parsed.notes;
+            }
+          } else {
+            // Manifest dạng "github-{build}" — tải metadata từ GitHub raw
+            const verRes = await httpsReq(`${GITHUB_RAW_BASE}/version.json?t=${Date.now()}`, 'GET');
+            if (verRes.status === 200 && verRes.body) {
+              const parsed = JSON.parse(verRes.body);
+              if (parsed.version) latestVersion = parsed.version;
+              if (parsed.notes) notes = parsed.notes;
+            }
           }
         } catch {}
       }
@@ -467,7 +478,8 @@ ipcMain.handle('ota:apply', async () => {
       }
     }
 
-    if (bbKey) {
+    if (bbKey && bbKey !== 'github') {
+      // Có bbKey bytebin hợp lệ — tải bundle nhanh từ bytebin
       const bbRes = await httpsReq(`https://bytebin.lucko.me/${bbKey}`, 'GET');
       if (bbRes.status === 200 && bbRes.body) {
         const bundle = JSON.parse(bbRes.body);
@@ -795,11 +807,12 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
     }
 
     let r;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // Chỉ 2 lần thử với delay ngắn — tránh làm chậm heartbeat
+    for (let attempt = 0; attempt < 2; attempt++) {
       r = await httpsReq(url, 'POST', '');
       if (r.status === 200) return { ok: true };
-      if (attempt < 2) {
-        await new Promise((res) => setTimeout(res, 300 * (attempt + 1)));
+      if (attempt < 1) {
+        await new Promise((res) => setTimeout(res, 200));
       }
     }
     return { ok: false, error: cloudResponseError(r, 'Không lưu được trạng thái nhân viên lên Cloud'), status: r.status };

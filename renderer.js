@@ -3191,11 +3191,11 @@ $('pickBrowserBtn').onclick = async () => {
   setInterval(() => {
     syncFromCloud(false, true);
   }, 15000);
-  // Dong bo trang thai mo/dong gian hang Online moi 4 giay (muot ma, tuc thi)
+  // Dong bo trang thai mo/dong gian hang Online moi 2 giay (nhanh, Admin thay ngay)
   setInterval(() => {
     if (currentUser && !isMemberMode()) refreshOnlineActiveShops();
-  }, 4000);
-  // Heartbeat dinh ky moi 7 giay de lien tuc lam moi trang thai Online & dong bo gian hang dang mo len Cloud
+  }, 2000);
+  // Heartbeat dinh ky moi 3 giay de lien tuc lam moi trang thai Online & dong bo gian hang dang mo len Cloud
   setInterval(async () => {
     if (!currentUser) return;
     try {
@@ -3214,7 +3214,7 @@ $('pickBrowserBtn').onclick = async () => {
     } catch (err) {
       console.warn('Không gửi được heartbeat nhân viên lên Cloud:', err);
     }
-  }, 7000);
+  }, 3000);
   setInterval(() => {
     if (currentUser && !isMemberMode()) refreshActivityHistory();
   }, 60000);

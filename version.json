@@ -1,8 +1,8 @@
 {
-  "version": "2.1.62",
-  "buildNumber": 271,
-  "updatedAt": "2026-10-16",
-  "notes": "tối ưu hệ thống",
+  "version": "2.1.65",
+  "buildNumber": 274,
+  "updatedAt": "2026-11-10",
+  "notes": "Tang toc dong bo: heartbeat 3s, poll 2s, timeout 4s - fix OTA qua GitHub",
   "files": [
     "main.js",
     "main-core.js",
