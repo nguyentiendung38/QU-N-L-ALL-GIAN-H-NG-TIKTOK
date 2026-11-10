@@ -1,8 +1,8 @@
 {
-  "version": "2.1.68",
-  "buildNumber": 277,
+  "version": "2.1.69",
+  "buildNumber": 278,
   "updatedAt": "2026-11-10",
-  "notes": "Khac phuc triet de loi HTTP 503 khi doc trang thai nhan vien: retry 503, tan dung cache giu trang thai, toi uu tan suat dong bo",
+  "notes": "Giao dien nhan vien: chi hien thong bao cap nhat ban moi de su dung, khong hien chi tiet phien ban/noi dung cap nhat",
   "files": [
     "main.js",
     "main-core.js",

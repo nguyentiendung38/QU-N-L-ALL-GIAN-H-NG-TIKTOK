@@ -1413,6 +1413,22 @@ if ($('cloudSyncBtn')) {
 }
 
 // ---- KIEM TRA VA CAP NHAT TRUC TIEP (LIVE OTA HOT-UPDATE) ----
+let latestOtaResult = null;
+
+function updateOtaBannerUI() {
+  if (!latestOtaResult || !latestOtaResult.hasUpdate) return;
+  const banner = $('otaUpdateBanner');
+  if (!banner) return;
+  const isMember = isMemberMode();
+  if (isMember) {
+    if ($('otaBannerTitle')) $('otaBannerTitle').textContent = '🔔 Có phiên bản mới';
+    if ($('otaBannerNotes')) $('otaBannerNotes').textContent = 'Vui lòng cập nhật bản mới để sử dụng.';
+  } else {
+    if ($('otaBannerTitle')) $('otaBannerTitle').textContent = `🔔 Đã có bản cập nhật mới (Phiên bản v${latestOtaResult.latestVersion})!`;
+    if ($('otaBannerNotes')) $('otaBannerNotes').textContent = `Nội dung cập nhật: ${latestOtaResult.notes || 'Bổ sung tính năng mới'} — Bấm cập nhật để áp dụng ngay (không tắt Chrome đang mở).`;
+  }
+}
+
 async function checkAndUpdateOta(silent = true) {
   if (!window.api.checkOtaUpdate) return;
   const checkBtn = $('otaCheckBtn');
@@ -1423,24 +1439,29 @@ async function checkAndUpdateOta(silent = true) {
   }
   const res = await window.api.checkOtaUpdate();
   if (res && res.ok) {
+    latestOtaResult = res;
+    const isMember = isMemberMode();
     if (checkTxt) {
       checkTxt.textContent = res.hasUpdate
-        ? `🔔 Có bản mới v${res.latestVersion}`
-        : `Live OTA: v${res.currentVersion || '2.1.0'}`;
+        ? (isMember ? '🔔 Có bản mới' : `🔔 Có bản mới v${res.latestVersion}`)
+        : (isMember ? 'Live OTA' : `Live OTA: v${res.currentVersion || '2.1.0'}`);
     } else if (checkBtn) {
       checkBtn.textContent = res.hasUpdate
-        ? `🔔 Có bản mới v${res.latestVersion}`
-        : `🔄 v${res.currentVersion || '2.1.0'}`;
+        ? (isMember ? '🔔 Có bản mới' : `🔔 Có bản mới v${res.latestVersion}`)
+        : (isMember ? '🔄 Bản mới nhất' : `🔄 v${res.currentVersion || '2.1.0'}`);
     }
     if (res.hasUpdate) {
       const banner = $('otaUpdateBanner');
       if (banner) {
-        $('otaBannerTitle').textContent = `🔔 Đã có bản cập nhật mới (Phiên bản v${res.latestVersion})!`;
-        $('otaBannerNotes').textContent = `Nội dung cập nhật: ${res.notes || 'Bổ sung tính năng mới'} — Bấm cập nhật để áp dụng ngay (không tắt Chrome đang mở).`;
+        updateOtaBannerUI();
         banner.classList.remove('hidden');
       }
       if (!silent) {
-        toast(`🔔 Phát hiện bản cập nhật mới v${res.latestVersion}! Hãy bấm "⚡ Cập nhật ngay".`);
+        if (isMember) {
+          toast('🔔 Có bản cập nhật mới! Hãy bấm "⚡ Cập nhật ngay" để tiếp tục sử dụng.');
+        } else {
+          toast(`🔔 Phát hiện bản cập nhật mới v${res.latestVersion}! Hãy bấm "⚡ Cập nhật ngay".`);
+        }
       }
     } else if (!silent) {
       toast(`✅ Bạn đang sử dụng phiên bản mới nhất (v${res.currentVersion || '2.1.0'})!`);
@@ -1784,6 +1805,7 @@ function render() {
     if ($('grid')) $('grid').innerHTML = '';
     return;
   }
+  updateOtaBannerUI();
   applyRoleUI();
   renderMemberFilter();
   renderGroupTabs();
