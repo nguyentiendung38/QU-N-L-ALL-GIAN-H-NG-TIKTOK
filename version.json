@@ -1,8 +1,8 @@
 {
-  "version": "2.1.73",
-  "buildNumber": 282,
+  "version": "2.1.74",
+  "buildNumber": 283,
   "updatedAt": "2026-11-10",
-  "notes": "Fix dong bo cloud chunks bi 503 va co che khoa/dang xuat tuc thi tai khoan nhan vien da bi xoa",
+  "notes": "Them hop thoai canh bao khi dong app se tat toan bo cac profile Chrome dang mo",
   "files": [
     "main.js",
     "main-core.js",

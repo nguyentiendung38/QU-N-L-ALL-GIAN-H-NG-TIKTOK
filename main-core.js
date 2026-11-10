@@ -2830,9 +2830,38 @@ function createWindow() {
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(activeDir, 'index.html'));
 
-  // Khi tat cua so ung dung: neu co Chrome dang mo thi dong toan bo de tranh viec nhan vien tat app ma van len dung Chrome
+  // Khi tat cua so ung dung: neu co Chrome dang mo thi canh bao nguoi dung rang tat ca Chrome se bi dong theo
   win.on('close', async (e) => {
     if (isRestartingApp || isAppClosing) return;
+
+    let activeCount = 0;
+    try {
+      const activeIds = syncRunningShops();
+      activeCount = Math.max(
+        Array.isArray(activeIds) ? activeIds.length : 0,
+        shopChildProcesses.size,
+        runningShops.size
+      );
+    } catch {}
+
+    if (activeCount > 0) {
+      const choice = dialog.showMessageBoxSync(win, {
+        type: 'warning',
+        buttons: ['Đóng ứng dụng và tắt Chrome', 'Hủy bỏ'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+        title: 'Xác nhận đóng ứng dụng',
+        message: `Đang có ${activeCount} gian hàng / profile Chrome đang mở!`,
+        detail: '⚠️ Chú ý: Khi bạn đóng ứng dụng, toàn bộ các cửa sổ Chrome của gian hàng đang mở sẽ tự động bị đóng theo để bảo mật dữ liệu.\n\nBạn có muốn đóng ứng dụng và tắt hết các profile Chrome không?'
+      });
+
+      if (choice === 1) {
+        e.preventDefault();
+        return;
+      }
+    }
+
     isAppClosing = true;
     e.preventDefault();
     try {
