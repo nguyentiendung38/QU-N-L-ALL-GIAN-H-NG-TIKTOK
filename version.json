@@ -1,8 +1,8 @@
 {
-  "version": "2.1.74",
-  "buildNumber": 283,
+  "version": "2.1.75",
+  "buildNumber": 284,
   "updatedAt": "2026-11-10",
-  "notes": "Them hop thoai canh bao khi dong app se tat toan bo cac profile Chrome dang mo",
+  "notes": "Toi uu toc do dang nhap tuc thi khong con bi treo dong bo online",
   "files": [
     "main.js",
     "main-core.js",

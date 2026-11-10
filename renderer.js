@@ -1300,13 +1300,13 @@ async function doLogin(silent = false) {
     return u.toLowerCase() === adminU && p === adminP;
   };
 
-  // Luon dong bo du lieu Online moi nhat tu Cloud truoc khi dang nhap thanh vien de dam bao tai khoan chua bi xoa
-  if (!checkAdmin()) {
+  // Neu chua khop tai khoan tren may -> dong bo nhanh tu Cloud de lay tai khoan moi tao
+  if (!checkAdmin() && !findMatchingMember(u, p)) {
     if (!silent) {
       $('loginSubmitBtn').disabled = true;
       $('loginSubmitBtn').textContent = '⏳ Đang đồng bộ tài khoản Online...';
     }
-    await syncFromCloud(true, true);
+    await syncFromCloud(false, true, false);
     if (!silent) {
       $('loginSubmitBtn').disabled = false;
       $('loginSubmitBtn').textContent = '🔐 Đăng nhập vào hệ thống';
