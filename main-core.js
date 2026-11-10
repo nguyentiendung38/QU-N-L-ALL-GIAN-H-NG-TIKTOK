@@ -758,6 +758,7 @@ let lastActiveFetchWarningAt = 0;
 
 // Cache su kien lich su hoat dong trong bo nho de tranh goi hang chuc request len Cloud gay HTTP 503
 const cloudEventCache = new Map(); // "userKey_eventId" -> fullEvent
+const ACTIVITY_HISTORY_LIMIT = 100;
 function cacheCloudEvent(userKey, eventId, eventObj) {
   if (!eventId || !eventObj) return;
   const key = `${userKey}_${eventId}`;
@@ -769,8 +770,8 @@ function cacheCloudEvent(userKey, eventId, eventObj) {
 }
 
 function normalizeActiveActivity(event, userKey, userName) {
-  if (!event || !['open', 'close', 'login', 'logout'].includes(event.action)) return null;
-  const isShopEvent = event.action === 'open' || event.action === 'close';
+  if (!event || !['open', 'close', 'login', 'logout', 'proxy_check'].includes(event.action)) return null;
+  const isShopEvent = event.action === 'open' || event.action === 'close' || event.action === 'proxy_check';
   const id = String(event.id || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
   if (!id) return null;
   return {
@@ -780,6 +781,7 @@ function normalizeActiveActivity(event, userKey, userName) {
     userName,
     shopId: isShopEvent ? String(event.shopId || '').trim().slice(0, 80) : '',
     shopName: isShopEvent ? String(event.shopName || '').trim().slice(0, 80) : '',
+    details: String(event.details || '').trim().slice(0, 60),
     time: Number(event.time) || Date.now()
   };
 }
@@ -1105,11 +1107,16 @@ function isCloudActivityIndex(value) {
 async function saveCloudActivityEvent(cloudKey, userKey, event) {
   const eventKey = `event_${userKey}_${event.id}`;
   const compactEvent = {
-    action: event.action,
-    shopId: String(event.shopId || '').slice(0, 80),
-    time: Number(event.time) || Date.now()
+    a: event.action,
+    s: String(event.shopId || '').slice(0, 80),
+    d: String(event.details || '').slice(0, 60),
+    t: Number(event.time) || Date.now()
   };
-  let saved = await httpsReq(activityCloudUrl(cloudKey, eventKey, compactEvent, true), 'POST', '');
+  const url = activityCloudUrl(cloudKey, eventKey, compactEvent, true);
+  if (url.length > 240) {
+    return { ok: false, error: 'Sự kiện hoạt động vượt giới hạn URL Cloud.' };
+  }
+  let saved = await httpsReq(url, 'POST', '');
   if (saved.status === 503) {
     await new Promise((res) => setTimeout(res, 300));
     saved = await httpsReq(activityCloudUrl(cloudKey, eventKey, compactEvent, true), 'POST', '');
@@ -1178,15 +1185,16 @@ async function saveCloudActivityIndex(cloudKey, userKey, eventIds) {
 
 ipcMain.handle('cloud:appendActivity', async (_e, event) => {
   try {
-    if (!event || !['open', 'close', 'login', 'logout'].includes(event.action)) {
+    if (!event || !['open', 'close', 'login', 'logout', 'proxy_check'].includes(event.action)) {
       return { ok: false, error: 'Loại hoạt động không hợp lệ' };
     }
     const rawKey = String(event.userKey || 'admin').trim();
     const userKey = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
     const shopId = String(event.shopId || '').trim().slice(0, 80);
     const shopName = String(event.shopName || '').trim().slice(0, 80);
-    const isShopEvent = event.action === 'open' || event.action === 'close';
-    if (!userKey || (isShopEvent && (!shopId || !shopName))) {
+    const isShopEvent = event.action === 'open' || event.action === 'close' || event.action === 'proxy_check';
+    const requiresShop = event.action === 'open' || event.action === 'close';
+    if (!userKey || (requiresShop && (!shopId || !shopName))) {
       return { ok: false, error: 'Thiếu thông tin nhân viên hoặc shop' };
     }
 
@@ -1219,16 +1227,17 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
       userName: String(event.userName || 'Nhân viên').trim().slice(0, 40),
       shopId: isShopEvent ? shopId : '',
       shopName: isShopEvent ? shopName : '',
+      details: String(event.details || '').trim().slice(0, 60),
       time: Number(event.time) || Date.now()
     };
 
     let eventIds = Array.isArray(stored && stored.ids)
-      ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-14)
+      ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-(ACTIVITY_HISTORY_LIMIT - 1))
       : [];
     if (!eventIds.length && Array.isArray(stored && stored.events)) {
       const legacyEvents = stored.events
-        .filter((item) => item && item.id && ['open', 'close', 'login', 'logout'].includes(item.action))
-        .slice(-14);
+        .filter((item) => item && item.id && ['open', 'close', 'login', 'logout', 'proxy_check'].includes(item.action))
+        .slice(-(ACTIVITY_HISTORY_LIMIT - 1));
       for (const oldEvent of legacyEvents) {
         const safeEvent = {
           ...oldEvent,
@@ -1243,7 +1252,7 @@ ipcMain.handle('cloud:appendActivity', async (_e, event) => {
 
     const savedEvent = await saveCloudActivityEvent(cloudKey, userKey, nextEvent);
     if (!savedEvent.ok) return savedEvent;
-    eventIds = [...eventIds.filter((id) => id !== eventId), eventId].slice(-15);
+    eventIds = [...eventIds.filter((id) => id !== eventId), eventId].slice(-ACTIVITY_HISTORY_LIMIT);
     const savedIndex = await saveCloudActivityIndex(cloudKey, userKey, eventIds);
     if (!savedIndex.ok) return savedIndex;
     cacheCloudEvent(userKey, eventId, nextEvent);
@@ -1333,7 +1342,7 @@ ipcMain.handle('cloud:getActivity', async () => {
         return { events: stored.events, error: null };
       }
       const eventIds = Array.isArray(stored && stored.ids)
-        ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-15)
+        ? stored.ids.map((id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_')).slice(-ACTIVITY_HISTORY_LIMIT)
         : [];
       const eventResults = [];
       for (const eventId of eventIds) {
@@ -1363,9 +1372,13 @@ ipcMain.handle('cloud:getActivity', async () => {
           const fullEvt = {
             ...parsed,
             id: parsed.id || eventId,
+            action: parsed.action || parsed.a,
             userKey: parsed.userKey || userKey,
             userName: parsed.userName || memberNames.get(userKey) || (userKey === 'admin' ? readAuthObj().adminUser : 'Nhân viên'),
-            shopName: parsed.shopName || shopNames.get(parsed.shopId) || ''
+            shopId: parsed.shopId || parsed.s || '',
+            shopName: parsed.shopName || shopNames.get(parsed.shopId || parsed.s) || '',
+            details: parsed.details || parsed.d || '',
+            time: Number(parsed.time || parsed.t) || Date.now()
           };
           cacheCloudEvent(userKey, eventId, fullEvt);
           eventResults.push({ event: fullEvt, error: null });
@@ -1417,8 +1430,10 @@ ipcMain.handle('activity:export', async (_event, events) => {
       open: 'Mở shop',
       close: 'Đóng shop',
       login: 'Đăng nhập',
-      logout: 'Đăng xuất'
+      logout: 'Đăng xuất',
+      proxy_check: 'Kiểm tra Proxy'
     }[item.action] || item.action || '')],
+    ['Chi tiết', (item) => item.details || ''],
     ['Gian hàng', (item) => item.shopName || ''],
     ['Mã gian hàng', (item) => item.shopId || '']
   ];

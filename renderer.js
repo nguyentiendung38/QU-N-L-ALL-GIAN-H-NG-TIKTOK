@@ -316,7 +316,7 @@ function saveLocalActivity(event) {
   }
 }
 
-function recordShopActivity(action, shop = null) {
+function recordShopActivity(action, shop = null, details = '') {
   const event = {
     id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     action,
@@ -324,6 +324,7 @@ function recordShopActivity(action, shop = null) {
     userName: currentUser && currentUser.isAdminPreview ? ((authConfig && authConfig.adminUser) || 'Admin') : getMyUserName(),
     shopId: shop ? shop.id : '',
     shopName: shop ? shop.name : '',
+    details: String(details || '').trim().slice(0, 60),
     time: Date.now(),
     synced: false
   };
@@ -332,6 +333,24 @@ function recordShopActivity(action, shop = null) {
     console.warn('Không đồng bộ được hoạt động:', error);
   });
   return event;
+}
+
+function getShopOpenActivityDetails(shop, which) {
+  if (shop.platform === 'shopee') return 'Mở Shopee';
+  if (which === 'ads') return 'Mở GMV Max Ads';
+  if (which === 'cskh_orders') {
+    return getShopPermMode(shop) === 'vanhanh' ? 'Mở đơn hàng To Ship' : 'Mở đơn hàng CSKH';
+  }
+  return 'Mở TikTok Seller Center';
+}
+
+function recordProxyCheckActivity(shop, result) {
+  if (!isMemberMode()) return;
+  recordShopActivity(
+    'proxy_check',
+    shop,
+    result && result.ok ? 'Proxy hoạt động' : 'Proxy không kết nối'
+  );
 }
 
 async function flushPendingActivity() {
@@ -861,16 +880,22 @@ function renderAdminDashboard() {
       : '<span class="dashboard-status pending">☁ Đang kiểm tra</span>';
   const activityRows = activity.map((event) => {
     const isOpen = event.action === 'open' || event.action === 'login';
+    const activityClass = event.action === 'proxy_check' ? '' : isOpen ? 'open' : 'close';
     const actionLabel = {
       open: 'Mở shop',
       close: 'Đóng shop',
       login: 'Đăng nhập',
-      logout: 'Đăng xuất'
+      logout: 'Đăng xuất',
+      proxy_check: 'Check Proxy'
     }[event.action] || 'Hoạt động';
+    const defaultShopName = event.action === 'login' || event.action === 'logout'
+      ? 'Tài khoản'
+      : event.action === 'proxy_check' ? 'Proxy' : 'Shop';
+    const shopLabel = [event.shopName || defaultShopName, event.details].filter(Boolean).join(' • ');
     return `
       <div class="dashboard-activity-row">
-        <span class="dashboard-activity-action ${isOpen ? 'open' : 'close'}">${actionLabel}</span>
-        <span class="dashboard-activity-shop" title="${escapeHtml(event.shopName || '')}">${escapeHtml(event.shopName || (event.action === 'login' || event.action === 'logout' ? 'Tài khoản' : 'Shop'))}</span>
+        <span class="dashboard-activity-action ${activityClass}">${actionLabel}</span>
+        <span class="dashboard-activity-shop" title="${escapeHtml(shopLabel)}">${escapeHtml(shopLabel)}</span>
         <span class="dashboard-activity-user">${escapeHtml(event.userName || 'Người dùng')}</span>
         <time>${escapeHtml(formatActivityTime(event.time))}</time>
       </div>
@@ -2189,7 +2214,10 @@ function render() {
         pb.title = 'Bấm vào đây để kiểm tra Proxy Live hay Die';
       }
 
-      pb.onclick = () => checkShopProxy(s, false, true);
+      pb.onclick = async () => {
+        const result = await checkShopProxy(s, false, true);
+        recordProxyCheckActivity(s, result);
+      };
       metaRow.appendChild(pb);
 
       if (!isMemberMode()) {
@@ -2346,7 +2374,7 @@ async function openShop(s, which) {
   }
   if (r && r.ok) {
     runningIds.add(s.id);
-    if (!r.alreadyOpen) recordShopActivity('open', s);
+    recordShopActivity('open', s, getShopOpenActivityDetails(s, which));
     refreshRunningStatusUI();
     if (r.extensionAccessNeedsRestart) {
       toast('GMV Max đã bị tắt cho tài khoản này. Nếu extension còn hiện, hãy đóng Chrome shop rồi mở lại.');
@@ -2421,6 +2449,9 @@ $('checkAllProxyBtn').onclick = async () => {
 
   btn.disabled = false;
   btn.textContent = '🌐 Check tất cả Proxy';
+  if (isMemberMode()) {
+    recordShopActivity('proxy_check', null, `${withProxy.length} Proxy: ${liveCount} hoạt động, ${dieCount} lỗi`);
+  }
   toast(`Kết quả Check ${withProxy.length} Proxy: 🟢 ${liveCount} Live • 🔴 ${dieCount} Die`);
 };
 
@@ -2476,7 +2507,7 @@ $('openSelectedBtn').onclick = async () => {
     const result = await window.api.openShop(list[i].id, mode, '', canCurrentUserUseGmvExtension());
     if (result && result.ok) {
       runningIds.add(list[i].id);
-      if (!result.alreadyOpen) recordShopActivity('open', list[i]);
+      recordShopActivity('open', list[i], getShopOpenActivityDetails(list[i], mode));
       openedCount++;
       updateCardsRunningStatus();
     }
