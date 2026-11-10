@@ -753,6 +753,28 @@ function cloudResponseError(response, action) {
   return `${action} (HTTP ${response.status})${detail ? `: ${detail.slice(0, 240)}` : ''}`;
 }
 
+let lastReportedUser = { userKey: 'admin', userName: 'Admin', role: 'admin' };
+let isAppClosing = false;
+
+async function reportOfflineOnExit() {
+  try {
+    const s = readJson(settingsFile(), {});
+    const cloudKey = (s.cloudKey || DEFAULT_CLOUD_KEY).trim();
+    const userKey = (lastReportedUser && lastReportedUser.userKey) || 'admin';
+    const payload = {
+      who: (lastReportedUser && lastReportedUser.userName) || 'Nhân viên',
+      role: (lastReportedUser && lastReportedUser.role) || 'cskh',
+      time: Date.now(),
+      shops: [], // Dong het shop khi tat app
+      userKey,
+      activityPending: 0
+    };
+    cloudActiveCache.delete(userKey);
+    const url = activeStatusUrl(cloudKey, userKey, payload);
+    await httpsReq(url, 'POST', '');
+  } catch {}
+}
+
 // Dong bo trang thai dang mo / dang dong cua cac gian hang qua Cloud giua may Admin va Nhan vien
 ipcMain.handle('cloud:reportActive', async (_e, data) => {
   try {
@@ -762,6 +784,7 @@ ipcMain.handle('cloud:reportActive', async (_e, data) => {
     const userKey = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
     const who = (data && data.userName ? String(data.userName).trim() : 'Admin').slice(0, 40);
     const role = (data && data.role ? String(data.role).trim() : 'cskh').slice(0, 20);
+    lastReportedUser = { userKey, userName: who, role };
     const shops = (data && Array.isArray(data.shopIds))
       ? Array.from(new Set(data.shopIds.map((id) => String(id).trim().slice(0, 80)).filter(Boolean)))
       : [];
@@ -2687,7 +2710,52 @@ function createWindow() {
   });
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(activeDir, 'index.html'));
+
+  // Khi tat cua so ung dung: neu co Chrome dang mo thi dong toan bo de tranh viec nhan vien tat app ma van len dung Chrome
+  win.on('close', async (e) => {
+    if (isRestartingApp || isAppClosing) return;
+    const ids = syncRunningShops();
+    if (ids.length > 0) {
+      e.preventDefault();
+      isAppClosing = true;
+      try {
+        await reportOfflineOnExit();
+        await Promise.race([
+          Promise.all(ids.map((id) => closeShopProcess(id))),
+          new Promise((r) => setTimeout(r, 2500))
+        ]);
+      } catch (err) {
+        console.error('Lỗi đóng Chrome khi tắt app:', err);
+      }
+      if (win && !win.isDestroyed()) {
+        win.destroy();
+      }
+    } else {
+      reportOfflineOnExit().catch(() => {});
+    }
+  });
 }
+
+app.on('before-quit', async (e) => {
+  if (isRestartingApp || isAppClosing) return;
+  const ids = syncRunningShops();
+  if (ids.length > 0) {
+    e.preventDefault();
+    isAppClosing = true;
+    try {
+      await reportOfflineOnExit();
+      await Promise.race([
+        Promise.all(ids.map((id) => closeShopProcess(id))),
+        new Promise((r) => setTimeout(r, 2500))
+      ]);
+    } catch (err) {
+      console.error('Lỗi đóng Chrome khi thoát app:', err);
+    }
+    app.quit();
+  } else {
+    reportOfflineOnExit().catch(() => {});
+  }
+});
 
 app.on('second-instance', () => {
   if (win) {

@@ -1,8 +1,8 @@
 {
-  "version": "2.1.70",
-  "buildNumber": 279,
+  "version": "2.1.71",
+  "buildNumber": 280,
   "updatedAt": "2026-11-10",
-  "notes": "Fix triet de cache CDN GitHub raw khi update OTA: su dung commit SHA doc quyen cho moi ban phat hanh",
+  "notes": "Dong toan bo Chrome shop khi nhan vien tat app hoac dang xuat, dong thoi bao cao Cloud da dong het shop",
   "files": [
     "main.js",
     "main-core.js",

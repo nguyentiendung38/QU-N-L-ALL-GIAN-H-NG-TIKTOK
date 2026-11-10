@@ -1207,16 +1207,24 @@ function showLoginScreen() {
     const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
     const userName = currentUser.isAdminPreview ? 'Admin' : getMyUserName();
     const logoutEvent = recordShopActivity('logout');
+
+    // Đóng toàn bộ Chrome đang mở khi nhân viên bấm Đăng xuất
+    if (runningIds.size > 0) {
+      window.api.closeAllShops().catch((err) => {
+        console.warn('Lỗi khi đóng Chrome lúc đăng xuất:', err);
+      });
+      runningIds.clear();
+      refreshRunningStatusUI();
+    }
+
     window.api.cloudReportActive({
       userKey,
       userName,
       role: isMemberMode() ? currentUser.member.permMode || 'cskh' : 'admin',
-      shopIds: Array.from(runningIds),
+      shopIds: [], // Đã đóng hết khi đăng xuất
       latestActivity: logoutEvent,
-      proxyIssues: getVisibleShopsForRole()
-        .filter((shop) => proxyStatusMap.get(shop.id)?.state === 'die')
-        .map((shop) => shop.id),
-      activityPending: shopActivityLog.filter((event) => !event.synced).length
+      proxyIssues: [],
+      activityPending: 0
     }).catch((error) => {
       console.warn('Không đồng bộ được trạng thái khi đăng xuất:', error);
     });
@@ -3247,9 +3255,7 @@ window.addEventListener('beforeunload', () => {
     const userKey = currentUser.isAdminPreview ? 'admin' : getMyUserKey();
     const userName = currentUser.isAdminPreview ? 'Admin' : getMyUserName();
     try {
-      if (runningIds.size === 0) {
-        window.api.cloudReportActive({ userKey, userName, shopIds: [] });
-      }
+      window.api.cloudReportActive({ userKey, userName, shopIds: [] });
     } catch {}
   }
 });
