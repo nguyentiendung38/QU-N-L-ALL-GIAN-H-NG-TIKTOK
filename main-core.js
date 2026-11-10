@@ -6,7 +6,7 @@ const https = require('https');
 const zlib = require('zlib');
 const net = require('net');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const { initSecurity } = require('./security');
 
 // He thong bao ve (chong DevTools / debug) giu nguyen nhu ban truoc
@@ -2229,6 +2229,14 @@ async function closeShopProcess(id) {
   };
 
   if (process.platform === 'win32') {
+    // 1. Thu diet nhanh bang PID da biet (chi mat ~50ms)
+    if (pid && isProcessAlive(pid)) {
+      await killShopPid(pid);
+      if (await waitForShopExit(id, pid, 800)) {
+        return finish();
+      }
+    }
+
     const result = await findProfileProcessIds(dir);
     if (result.error) {
       return { ok: false, error: result.error };
@@ -2260,7 +2268,7 @@ async function closeShopProcess(id) {
     }
     const killErrors = (await Promise.all(pids.map(killShopPid))).filter(Boolean);
     pid = pids.includes(pid) ? pid : 0;
-    if (!(await waitForShopExit(id, pid, 2000))) {
+    if (!(await waitForShopExit(id, pid, 1500))) {
       return { ok: false, error: 'Chưa đóng được Chrome. Hãy thử đóng lại hoặc kiểm tra cửa sổ Chrome của shop.' };
     }
     const remaining = await findProfileProcessIds(dir);
@@ -2300,19 +2308,74 @@ async function closeShopProcess(id) {
   return { ok: false, error: 'Chưa đóng được Chrome. Hãy thử đóng lại hoặc kiểm tra cửa sổ Chrome của shop.' };
 }
 
+// Dong nhanh toan bo Chrome cua tat ca cac shop (chi mat ~100-300ms, khong bi treo taskbar)
+function forceKillAllShopProcessesFast() {
+  const pidsToKill = new Set();
+
+  for (const [id, pid] of runningShops.entries()) {
+    if (pid && isProcessAlive(pid)) pidsToKill.add(pid);
+  }
+
+  for (const [id, child] of shopChildProcesses.entries()) {
+    if (child && child.pid && isProcessAlive(child.pid)) pidsToKill.add(child.pid);
+  }
+
+  try {
+    const root = profilesRoot();
+    if (fs.existsSync(root)) {
+      const entries = fs.readdirSync(root);
+      for (const entry of entries) {
+        const pidFile = path.join(root, entry, '.chrome_pid');
+        if (fs.existsSync(pidFile)) {
+          try {
+            const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+            if (pid && isProcessAlive(pid)) pidsToKill.add(pid);
+            fs.unlinkSync(pidFile);
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+
+  if (process.platform === 'win32') {
+    // 1. Diet ngay lap tuc theo cac PID da biet bang taskkill tree
+    for (const pid of pidsToKill) {
+      try {
+        execFileSync('taskkill', ['/F', '/PID', String(pid), '/T'], {
+          windowsHide: true,
+          stdio: 'ignore',
+          timeout: 1000
+        });
+      } catch {}
+    }
+    // 2. Quet don sach bat ky tien trinh Chrome nao con bam theo profile tiktok-multishop
+    try {
+      const cleanupCmd = `Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'chrome|edge' -and $_.CommandLine -like '*tiktok-multishop*profiles*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
+      execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cleanupCmd], {
+        windowsHide: true,
+        stdio: 'ignore',
+        timeout: 2500
+      });
+    } catch {}
+  } else {
+    for (const pid of pidsToKill) {
+      try { process.kill(pid, 'SIGKILL'); } catch {}
+    }
+  }
+
+  for (const id of Array.from(runningShops.keys())) {
+    stopProxyForwarder(id);
+  }
+  runningShops.clear();
+  shopChildProcesses.clear();
+}
+
 ipcMain.handle('shop:close', (_e, id) => closeShopProcess(id));
 
 ipcMain.handle('shops:closeAll', async () => {
-  const ids = syncRunningShops();
-  const results = await Promise.all(ids.map((id) => closeShopProcess(id)));
-  const closedCount = results.filter((result) => result && result.ok).length;
-  const errors = results.filter((result) => result && !result.ok).map((result) => result.error);
-  return {
-    ok: errors.length === 0,
-    closedCount,
-    closedIds: ids.filter((_id, index) => results[index] && results[index].ok),
-    error: errors.length ? errors.join('; ') : undefined
-  };
+  forceKillAllShopProcessesFast();
+  notifyRunningChanged(true);
+  return { ok: true, closedCount: 0 };
 });
 
 const EXTENSION_ID = 'elhkhdcolgkmokglojljlidmahmlnofh';
@@ -2714,47 +2777,31 @@ function createWindow() {
   // Khi tat cua so ung dung: neu co Chrome dang mo thi dong toan bo de tranh viec nhan vien tat app ma van len dung Chrome
   win.on('close', async (e) => {
     if (isRestartingApp || isAppClosing) return;
-    const ids = syncRunningShops();
-    if (ids.length > 0) {
-      e.preventDefault();
-      isAppClosing = true;
-      try {
-        await reportOfflineOnExit();
-        await Promise.race([
-          Promise.all(ids.map((id) => closeShopProcess(id))),
-          new Promise((r) => setTimeout(r, 2500))
-        ]);
-      } catch (err) {
-        console.error('Lỗi đóng Chrome khi tắt app:', err);
-      }
-      if (win && !win.isDestroyed()) {
-        win.destroy();
-      }
-    } else {
-      reportOfflineOnExit().catch(() => {});
+    isAppClosing = true;
+    e.preventDefault();
+    try {
+      await reportOfflineOnExit();
+      forceKillAllShopProcessesFast();
+    } catch (err) {
+      console.error('Lỗi đóng Chrome khi tắt app:', err);
+    }
+    if (win && !win.isDestroyed()) {
+      win.destroy();
     }
   });
 }
 
 app.on('before-quit', async (e) => {
   if (isRestartingApp || isAppClosing) return;
-  const ids = syncRunningShops();
-  if (ids.length > 0) {
-    e.preventDefault();
-    isAppClosing = true;
-    try {
-      await reportOfflineOnExit();
-      await Promise.race([
-        Promise.all(ids.map((id) => closeShopProcess(id))),
-        new Promise((r) => setTimeout(r, 2500))
-      ]);
-    } catch (err) {
-      console.error('Lỗi đóng Chrome khi thoát app:', err);
-    }
-    app.quit();
-  } else {
-    reportOfflineOnExit().catch(() => {});
+  isAppClosing = true;
+  e.preventDefault();
+  try {
+    await reportOfflineOnExit();
+    forceKillAllShopProcessesFast();
+  } catch (err) {
+    console.error('Lỗi đóng Chrome khi thoát app:', err);
   }
+  app.quit();
 });
 
 app.on('second-instance', () => {

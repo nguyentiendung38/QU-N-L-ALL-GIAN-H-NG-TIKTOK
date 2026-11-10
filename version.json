@@ -1,8 +1,8 @@
 {
-  "version": "2.1.71",
-  "buildNumber": 280,
+  "version": "2.1.72",
+  "buildNumber": 281,
   "updatedAt": "2026-11-10",
-  "notes": "Dong toan bo Chrome shop khi nhan vien tat app hoac dang xuat, dong thoi bao cao Cloud da dong het shop",
+  "notes": "Sua triet de loi Chrome treo duoi taskbar: diet nhanh bang taskkill tree va quet don sach process khi tat app",
   "files": [
     "main.js",
     "main-core.js",
