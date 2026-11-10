@@ -1140,7 +1140,23 @@ async function syncFromCloud(force = false, silent = true, refreshActive = true)
     if (headerTxt) headerTxt.textContent = 'Đang đồng bộ...';
     else if (headerBtn) headerBtn.textContent = '⏳ Đang đồng bộ...';
   }
-  const r = await window.api.cloudPull(force);
+  let r;
+  try {
+    r = await window.api.cloudPull(force);
+  } catch (error) {
+    activeCloudOk = false;
+    activeCloudError = error && error.message ? error.message : 'Không kết nối được máy chủ Cloud';
+    renderAdminDashboard();
+    if (headerTxt) {
+      headerTxt.textContent = 'Đồng bộ Online';
+    } else if (headerBtn) {
+      headerBtn.textContent = '☁️ Đồng bộ Online';
+    }
+    if (!silent) {
+      toast('⚠️ Không kết nối được máy chủ Cloud: ' + activeCloudError);
+    }
+    return false;
+  }
   if (r && r.ok) {
     activeCloudOk = true;
     activeCloudError = '';
@@ -1281,10 +1297,40 @@ function findMatchingMember(u, p) {
   });
 }
 
+function hasMemberAccount(u) {
+  const username = u.toLowerCase();
+  return members.some((m) => {
+    const mUser = (m.username || slugUsername(m.name) || '').toLowerCase();
+    const mName = (m.name || '').trim().toLowerCase();
+    return username === mUser || username === mName;
+  });
+}
+
+async function syncCloudForLogin() {
+  let timeoutId;
+  const syncResult = syncFromCloud(false, true, false).then(
+    (ok) => ({ ok, timedOut: false }),
+    (error) => ({ ok: false, timedOut: false, error })
+  );
+  const result = await Promise.race([
+    syncResult,
+    new Promise((resolve) => {
+      timeoutId = setTimeout(() => resolve({ ok: false, timedOut: true }), 5000);
+    })
+  ]);
+  clearTimeout(timeoutId);
+  return result;
+}
+
 async function doLogin(silent = false) {
+  const submitBtn = $('loginSubmitBtn');
+  if (!silent && submitBtn.disabled) return false;
+
   const u = $('loginUser').value.trim();
   const p = $('loginPass').value.trim();
   const errBox = $('loginError');
+
+  if (!silent) errBox.classList.add('hidden');
 
   if (!u || !p) {
     if (!silent) {
@@ -1301,15 +1347,30 @@ async function doLogin(silent = false) {
   };
 
   // Neu chua khop tai khoan tren may -> dong bo nhanh tu Cloud de lay tai khoan moi tao
-  if (!checkAdmin() && !findMatchingMember(u, p)) {
+  if (!checkAdmin() && !hasMemberAccount(u)) {
     if (!silent) {
-      $('loginSubmitBtn').disabled = true;
-      $('loginSubmitBtn').textContent = '⏳ Đang đồng bộ tài khoản Online...';
+      submitBtn.disabled = true;
+      submitBtn.textContent = '⏳ Đang kiểm tra tài khoản Online...';
     }
-    await syncFromCloud(false, true, false);
-    if (!silent) {
-      $('loginSubmitBtn').disabled = false;
-      $('loginSubmitBtn').textContent = '🔐 Đăng nhập vào hệ thống';
+    let syncResult;
+    try {
+      syncResult = await syncCloudForLogin();
+    } finally {
+      if (!silent) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '🔐 Đăng nhập vào hệ thống';
+      }
+    }
+    if (!syncResult.ok) {
+      if (!silent) {
+        errBox.textContent = syncResult.timedOut
+          ? '⚠️ Kiểm tra tài khoản Online quá thời gian chờ. Vui lòng kiểm tra kết nối hoặc thử lại sau.'
+          : `⚠️ Không thể kiểm tra tài khoản Online: ${
+              (syncResult.error && syncResult.error.message) || activeCloudError || 'Lỗi kết nối Cloud'
+            }. Vui lòng kiểm tra kết nối hoặc thử đồng bộ lại.`;
+        errBox.classList.remove('hidden');
+      }
+      return false;
     }
   }
 
