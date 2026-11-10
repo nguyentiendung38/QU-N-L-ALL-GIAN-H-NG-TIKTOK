@@ -105,10 +105,14 @@ function httpsReq(url, method = 'GET', body = null, headers = {}) {
     throw new Error(`Không commit/push được source release: ${e.message}`);
   }
 
-  // 2. Kích hoạt OTA manifest trên keyvalue — chỉ lưu "github-{buildNumber}"
-  //    main-core.js ota:check/apply sẽ fallback tải từng file từ GitHub raw nếu không có bbKey
+  // 2. Kích hoạt OTA manifest trên keyvalue — lưu "github-{buildNumber}-{commitSha}"
+  //    Dùng commit SHA cụ thể để tránh bị CDN của GitHub raw cache 5 phút!
   console.log('\n☁️ Đang kích hoạt OTA manifest trên Cloud...');
-  const manifest = `github-${verData.buildNumber}`;
+  let commitSha = 'main';
+  try {
+    commitSha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim() || 'main';
+  } catch {}
+  const manifest = `github-${verData.buildNumber}-${commitSha}`;
   let mRes = null;
   for (let attempt = 0; attempt < 5; attempt++) {
     mRes = await httpsReq(

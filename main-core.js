@@ -373,6 +373,7 @@ ipcMain.handle('ota:check', async () => {
     const mRes = await httpsReq(cloudManifestUrl, 'GET');
     let bbKey = '';
     let remoteBuild = 0;
+    let commitSha = 'main';
     if (mRes.status === 200 && mRes.body) {
       let rawM = '';
       try {
@@ -384,6 +385,7 @@ ipcMain.handle('ota:check', async () => {
         const parts = rawM.split('-');
         bbKey = parts[0];
         remoteBuild = parseInt(parts[1], 10) || 0;
+        commitSha = parts[2] || 'main';
       }
     }
 
@@ -403,8 +405,8 @@ ipcMain.handle('ota:check', async () => {
               if (parsed.notes) notes = parsed.notes;
             }
           } else {
-            // Manifest dạng "github-{build}" — tải metadata từ GitHub raw
-            const verRes = await httpsReq(`${GITHUB_RAW_BASE}/version.json?t=${Date.now()}`, 'GET');
+            // Manifest dạng "github-{build}-{sha}" — tải metadata theo commit SHA (tránh CDN cache)
+            const verRes = await httpsReq(`https://raw.githubusercontent.com/nguyentiendung38/QU-N-L-ALL-GIAN-H-NG-TIKTOK/${commitSha}/version.json`, 'GET');
             if (verRes.status === 200 && verRes.body) {
               const parsed = JSON.parse(verRes.body);
               if (parsed.version) latestVersion = parsed.version;
@@ -466,6 +468,7 @@ ipcMain.handle('ota:apply', async () => {
     const cloudManifestUrl = `https://keyvalue.immanuel.co/api/KeyVal/GetValue/${DEFAULT_CLOUD_KEY}/otamanifest`;
     const mRes = await httpsReq(cloudManifestUrl, 'GET');
     let bbKey = '';
+    let commitSha = 'main';
     if (mRes.status === 200 && mRes.body) {
       let rawM = '';
       try {
@@ -474,7 +477,9 @@ ipcMain.handle('ota:apply', async () => {
         rawM = String(mRes.body).replace(/^"|"$/g, '');
       }
       if (rawM && rawM.includes('-')) {
-        bbKey = rawM.split('-')[0];
+        const parts = rawM.split('-');
+        bbKey = parts[0];
+        commitSha = parts[2] || 'main';
       }
     }
 
@@ -493,9 +498,10 @@ ipcMain.handle('ota:apply', async () => {
       }
     }
 
-    // 2. Du phong: tai tung file tu GitHub
+    // 2. Du phong: tai tung file tu GitHub theo commitSha chinh xac (tranh Fastly CDN cache 5 phut)
     if (!appliedVersion) {
-      const verUrl = `${GITHUB_RAW_BASE}/version.json?t=${Date.now()}`;
+      const gitBase = `https://raw.githubusercontent.com/nguyentiendung38/QU-N-L-ALL-GIAN-H-NG-TIKTOK/${commitSha || 'main'}`;
+      const verUrl = `${gitBase}/version.json`;
       const verRes = await httpsReq(verUrl, 'GET');
       if (verRes.status === 200 && verRes.body) {
         const remote = JSON.parse(verRes.body);
@@ -504,7 +510,7 @@ ipcMain.handle('ota:apply', async () => {
           : ['index.html', 'renderer.js', 'preload.js', 'version.json'];
 
         for (const f of filesToDownload) {
-          const fRes = await httpsReq(`${GITHUB_RAW_BASE}/${f}?t=${Date.now()}`, 'GET');
+          const fRes = await httpsReq(`${gitBase}/${f}`, 'GET');
           if (fRes.status === 200 && fRes.body && fRes.body.length > 50) {
             fs.writeFileSync(path.join(targetDir, f), fRes.body, 'utf8');
           }

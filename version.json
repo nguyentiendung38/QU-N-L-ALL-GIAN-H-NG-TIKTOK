@@ -1,8 +1,8 @@
 {
-  "version": "2.1.69",
-  "buildNumber": 278,
+  "version": "2.1.70",
+  "buildNumber": 279,
   "updatedAt": "2026-11-10",
-  "notes": "Giao dien nhan vien: chi hien thong bao cap nhat ban moi de su dung, khong hien chi tiet phien ban/noi dung cap nhat",
+  "notes": "Fix triet de cache CDN GitHub raw khi update OTA: su dung commit SHA doc quyen cho moi ban phat hanh",
   "files": [
     "main.js",
     "main-core.js",
